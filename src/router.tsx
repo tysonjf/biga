@@ -2,8 +2,10 @@ import { createRootRoute, createRoute, createRouter, Navigate, Outlet, useRouter
 import { useSession } from './lib/auth';
 import { useOnline, usePwaState, applyUpdate, dismissUpdate } from './lib/pwa';
 import { useToast, dismiss } from './lib/toast';
-import { RecipesPage } from './routes/Recipes';
-import { EditorPage } from './routes/Editor';
+import { HomePage } from './routes/Home';
+import { RecipePage } from './routes/RecipePage';
+import { BakePage } from './routes/BakePage';
+import { PlaygroundPage } from './routes/PlaygroundPage';
 import { SettingsPage } from './routes/Settings';
 import { AuthPage } from './routes/Auth';
 import { DoughBall } from './components/DoughBall';
@@ -101,12 +103,16 @@ const rootRoute = createRootRoute({ component: Root });
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: RecipesPage,
+  component: HomePage,
   validateSearch: (s: Record<string, unknown>): { new?: 'biga' | 'poolish' } =>
     s.new === 'biga' || s.new === 'poolish' ? { new: s.new } : {},
 });
 
-const recipeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/r/$id', component: EditorPage });
+const recipeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/r/$id', component: RecipePage });
+
+const bakeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/b/$id', component: BakePage });
+
+const playRoute = createRoute({ getParentRoute: () => rootRoute, path: '/play', component: PlaygroundPage });
 
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage });
 
@@ -118,7 +124,7 @@ const signInRoute = createRoute({
     s.mode === 'signup' ? { mode: 'signup' } : {},
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, recipeRoute, settingsRoute, signInRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, recipeRoute, bakeRoute, playRoute, settingsRoute, signInRoute]);
 
 export const router = createRouter({
   routeTree,

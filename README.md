@@ -2,6 +2,16 @@
 
 An installable app (PWA) for planning biga and poolish pizza doughs to the hour. It works out the yeast, the water temperature and the timeline, and keeps your recipes in sync across devices.
 
+## How it's organised
+
+- **Recipes** are templates: the amounts, ferment, timings and a written method. They have no clock times, so a recipe reads the same whichever day you open it. Its schedule is shown as "if you start now".
+- **Bakes** are each time you make a recipe. **Start a bake** copies the recipe's settings, so you can tweak that bake without changing the recipe. A bake also records when the preferment was mixed and has its own notes. The bake page shows where you're up to and what's next, live. Bakes still on the go are listed on the home screen.
+  - **Bake again** starts a new bake with this bake's settings.
+  - **Save these settings to the recipe** copies a bake's tweaks back into the recipe.
+- **Recipes and bakes open locked**, so a stray tap while scrolling can't change anything. Tap **Edit** to unlock and **Done** to lock again. A bake's notes stay editable while it's locked.
+- **The playground** is a free calculator, one for biga and one for poolish. It saves as you go and never changes your recipes. **Save as recipe** turns it into a recipe.
+- **Notes** (a recipe's method, a bake's notes) are rich text: headings, numbered steps, bullets and checklists. They're stored as Markdown. The editor loads only on recipe and bake pages.
+
 - **Frontend:** React SPA (Vite, TanStack Router + Query). Optimistic updates, autosave, works offline.
 - **Backend:** one Cloudflare Worker (Hono) serving the static app and `/api/*`.
 - **Database:** Cloudflare D1, free plan.
@@ -82,11 +92,12 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
   - When the water would need to be below 2 °C, the app gives an ice amount instead.
   - It warns above 38 °C, because that water lands directly on live yeast.
 - **Hot rooms:** above 24 °C, the final-dough IDY is cut by half for every 8 °C, so the balls still get their 2 hours.
+- **Clock changes:** schedules run on real elapsed time, so a 12 h biga always gets 12 hours. When daylight saving starts or ends during a schedule, the clock times after it move by an hour. The schedule and the yeast chart then say so, for example "Clocks go forward 1 hour at 2:00 am on Sun 4 Oct".
 - **Bake later:** rest the balls about 1 h at room temperature, then refrigerate. Take them out about 2 h before baking.
   - Most doughs hold up to about 48 h in the fridge.
   - All-biga doughs hold only 12–16 h before they run out of sugar.
 
-The maths lives in `src/lib/dough.ts`, with tests in `src/lib/dough.test.ts`.
+The maths lives in `src/lib/dough.ts`, with tests in `src/lib/dough.test.ts`. The tests run in Sydney time so the clock-change cases are real.
 
 ## Development
 
@@ -100,7 +111,7 @@ pnpm typecheck
 pnpm build && pnpm preview   # production build, service worker included
 ```
 
-- `.dev.vars.example` uses Cloudflare's Turnstile test keys, which always pass.
+- `.dev.vars.example` uses Cloudflare's Turnstile test keys, which always pass. If the Worker can't reach Cloudflare to check them, leave `TURNSTILE_SECRET_KEY` empty to switch the captcha off locally.
 - Set `BREACHED_PASSWORD_CHECK=off` in `.dev.vars` to work offline.
 - After changing `wrangler.jsonc`, run `pnpm cf-typegen`.
 - After changing the artwork in `scripts/icons.mjs`, run `pnpm icons`. It regenerates the icons and the iOS launch screens.
@@ -108,9 +119,11 @@ pnpm build && pnpm preview   # production build, service worker included
 ### Layout
 
 ```
-src/            React app: routes/, components/, lib/ (dough maths, query + offline cache, auth client)
-shared/         recipe types + validation, used by app and Worker
-worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts
-migrations/     D1 schema
+src/            React app: routes/ (home, recipe, bake, playground), components/ (Dough.tsx holds the
+                calculator cards every page shares), lib/ (dough maths, query + offline cache, auth client)
+shared/         recipe, bake and playground types + validation, used by app and Worker
+worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts, bakes.ts, playground.ts
+migrations/     D1 schema. 0003 adds bakes and the playground, and turns any recipe start time from the
+                last week into a bake so a schedule in progress isn't lost
 public/         icons, iOS launch screens, _headers (CSP + caching)
 ```

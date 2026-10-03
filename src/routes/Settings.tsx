@@ -36,7 +36,7 @@ export function SettingsPage() {
       return;
     }
     await signOut().catch(() => {});
-    toast('Your account and recipes have been deleted.');
+    toast('Your account and everything in it has been deleted.');
     navigate({ to: '/signin', replace: true });
   };
 
@@ -140,7 +140,7 @@ export function SettingsPage() {
         }}
         title="Delete your account?"
       >
-        <p className="sheet-text">This permanently deletes your account and all {recipes?.length ?? ''} recipes. It can’t be undone.</p>
+        <p className="sheet-text">This permanently deletes your account, all {recipes?.length ?? ''} recipes, their bakes and your playground. It can’t be undone.</p>
         <form
           className="form"
           onSubmit={(e) => {

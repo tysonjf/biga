@@ -9,7 +9,8 @@ export function useDebouncedEffect<T>(value: T, ms: number, fn: (v: T) => void, 
   fnRef.current = fn;
   const pending = useRef<{ v: T } | null>(null);
   const timer = useRef<number | undefined>(undefined);
-  const first = useRef(true);
+  // The last value seen, so the first render (and React re-running effects in development) isn't a change.
+  const seen = useRef(value);
 
   const flush = () => {
     clearTimeout(timer.current);
@@ -21,10 +22,8 @@ export function useDebouncedEffect<T>(value: T, ms: number, fn: (v: T) => void, 
   };
 
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
+    if (Object.is(seen.current, value)) return;
+    seen.current = value;
     if (!enabled) return;
     pending.current = { v: value };
     clearTimeout(timer.current);

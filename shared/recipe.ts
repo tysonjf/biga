@@ -1,4 +1,9 @@
-// Recipe shape shared by the Worker (validation) and the app (editing + maths).
+// Shapes shared by the Worker (validation) and the app (editing + maths).
+//
+// A recipe is a template: ratios, ferment and timings, plus a written method. It has no clock times.
+// Each time you make it you start a bake, which copies the recipe's settings (so it can be tweaked
+// without touching the recipe), and adds when the preferment was mixed and notes of its own.
+// The playground is a scratch recipe per preferment that saves as you go.
 
 export type Kind = 'biga' | 'poolish';
 export const KINDS: Kind[] = ['biga', 'poolish'];
@@ -28,7 +33,6 @@ export type Settings = {
   proof: number; // ball proof at room temperature, min
   flours: Flour[];
   split: boolean; // each flour gets its own share of the preferment and of the final dough
-  start: string; // preferment mixed at, local "YYYY-MM-DDTHH:mm" ('' = not set)
   ddt: number; // target dough temperature straight after mixing, °C
   room: number; // room temperature where the dough is mixed and the balls proof, °C
   flourT: number; // flour temperature, °C
@@ -84,7 +88,6 @@ const COMMON = {
   proof: 120,
   flours: [{ name: 'Tipo 00', pct: 100, fin: 100 }],
   split: false,
-  start: '',
   ddt: 25,
   room: 21,
   flourT: 21,
@@ -106,8 +109,10 @@ export const LIMITS = {
   name: 60,
   flourName: 40,
   flours: 8,
+  notes: 20_000,
   recipesPerUser: 500,
-  bodyBytes: 8_000,
+  bakesPerUser: 2_000,
+  bodyBytes: 64_000,
 };
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -129,7 +134,6 @@ export function normalise(kind: Kind, raw: unknown): Settings {
   else out.bh = clamp(out.bh, 40, 65);
   if (typeof src.fridge === 'boolean') out.fridge = src.fridge;
   if (typeof src.split === 'boolean') out.split = src.split;
-  if (typeof src.start === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(src.start)) out.start = src.start;
   if (Array.isArray(src.flours)) {
     const flours = src.flours
       .slice(0, LIMITS.flours)
@@ -150,11 +154,38 @@ export type Recipe = {
   kind: Kind;
   name: string;
   settings: Settings;
+  /** The method, as Markdown. */
+  notes: string;
   createdAt: number;
   updatedAt: number;
 };
 
+export type Bake = {
+  id: string;
+  recipeId: string;
+  kind: Kind;
+  /** '' shows the date the preferment was mixed. */
+  name: string;
+  /** This bake's own copy of the recipe's settings. */
+  settings: Settings;
+  /** Preferment mixed at, local "YYYY-MM-DDTHH:mm" ('' = not set yet). */
+  start: string;
+  /** Notes on this bake, as Markdown. */
+  notes: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/** The playground for one preferment: settings only, saved as you go. */
+export type Play = { settings: Settings; updatedAt: number };
+export type Playground = Record<Kind, Play | null>;
+
 export const ID_RE = /^[A-Za-z0-9_-]{8,40}$/;
+export const START_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
+export const cleanStart = (v: unknown) => (typeof v === 'string' && START_RE.test(v) ? v : '');
+/** Notes as stored: a string within the limit. Anything else is `null` ("leave the notes as they are"). */
+export const cleanNotes = (v: unknown) => (typeof v === 'string' ? v.slice(0, LIMITS.notes) : null);
 
 export function newId(): string {
   return crypto.randomUUID().replaceAll('-', '').slice(0, 20);

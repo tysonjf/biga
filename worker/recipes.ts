@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { ID_RE, KINDS, LIMITS, normalise, type Kind, type Recipe } from '../shared/recipe';
+import { cleanNotes, LIMITS, normalise, type Kind, type Recipe } from '../shared/recipe';
+import { badId, err, isKind, readBody, safeJson, stamps, type AppEnv } from './common';
 
 type Row = {
   id: string;
@@ -7,30 +8,20 @@ type Row = {
   kind: Kind;
   name: string;
   settings: string;
+  notes: string;
   created_at: number;
   updated_at: number;
 };
-
-export type AppEnv = { Bindings: Env; Variables: { userId: string } };
 
 const toRecipe = (r: Row): Recipe => ({
   id: r.id,
   kind: r.kind,
   name: r.name,
   settings: normalise(r.kind, safeJson(r.settings)),
+  notes: r.notes ?? '',
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
-
-function safeJson(s: string): unknown {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return {};
-  }
-}
-
-const err = (message: string, code: string) => ({ message, code });
 
 export const recipes = new Hono<AppEnv>();
 
@@ -49,32 +40,28 @@ recipes.get('/', async (c) => {
  */
 recipes.put('/:id', async (c) => {
   const id = c.req.param('id');
-  if (!ID_RE.test(id)) return c.json(err('Bad recipe id.', 'BAD_ID'), 400);
-  const raw = await c.req.text();
-  if (raw.length > LIMITS.bodyBytes) return c.json(err('That recipe is too large.', 'TOO_LARGE'), 413);
-  const body = safeJson(raw) as Record<string, unknown> | null;
-  if (!body || typeof body !== 'object') return c.json(err('Bad request.', 'BAD_BODY'), 400);
+  const bad = badId(c, id);
+  if (bad) return bad;
+  const { body, error } = await readBody(c, 'recipe');
+  if (error) return error;
 
-  const kind = body.kind as Kind;
-  if (!KINDS.includes(kind)) return c.json(err('Unknown recipe type.', 'BAD_KIND'), 400);
+  const kind = body.kind;
+  if (!isKind(kind)) return c.json(err('Unknown recipe type.', 'BAD_KIND'), 400);
   const name = (typeof body.name === 'string' ? body.name : '').trim().slice(0, LIMITS.name) || 'Untitled';
   const settings = JSON.stringify(normalise(kind, body.settings));
-  const now = Date.now();
-  // Never trust a client clock that runs ahead of ours: a future timestamp would block later edits.
-  const clampTs = (v: unknown, fallback: number) =>
-    typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.min(Math.floor(v), now) : fallback;
-  const updatedAt = clampTs(body.updatedAt, now);
-  const createdAt = Math.min(clampTs(body.createdAt, now), updatedAt);
+  // Apps from before notes existed don't send them: leave whatever is stored alone.
+  const notes = cleanNotes(body.notes);
+  const { createdAt, updatedAt } = stamps(body);
   const userId = c.get('userId');
   const db = c.env.DB;
 
   // Fast path, the common autosave: one primary-key lookup.
   const updated = await db
     .prepare(
-      `UPDATE recipe SET kind = ?3, name = ?4, settings = ?5, updated_at = ?6
-       WHERE id = ?1 AND user_id = ?2 AND updated_at <= ?6 RETURNING *`,
+      `UPDATE recipe SET kind = ?3, name = ?4, settings = ?5, notes = COALESCE(?6, notes), updated_at = ?7
+       WHERE id = ?1 AND user_id = ?2 AND updated_at <= ?7 RETURNING *`,
     )
-    .bind(id, userId, kind, name, settings, updatedAt)
+    .bind(id, userId, kind, name, settings, notes, updatedAt)
     .first<Row>();
   if (updated) return c.json({ recipe: toRecipe(updated) });
 
@@ -87,21 +74,27 @@ recipes.put('/:id', async (c) => {
 
   const inserted = await db
     .prepare(
-      `INSERT INTO recipe (id, user_id, kind, name, settings, created_at, updated_at)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
-       WHERE (SELECT COUNT(*) FROM recipe WHERE user_id = ?2) < ?8
+      `INSERT INTO recipe (id, user_id, kind, name, settings, notes, created_at, updated_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+       WHERE (SELECT COUNT(*) FROM recipe WHERE user_id = ?2) < ?9
        ON CONFLICT (id) DO NOTHING
        RETURNING *`,
     )
-    .bind(id, userId, kind, name, settings, createdAt, updatedAt, LIMITS.recipesPerUser)
+    .bind(id, userId, kind, name, settings, notes ?? '', createdAt, updatedAt, LIMITS.recipesPerUser)
     .first<Row>();
   if (inserted) return c.json({ recipe: toRecipe(inserted) }, 201);
   return c.json(err(`You've reached the limit of ${LIMITS.recipesPerUser} recipes. Delete some old ones first.`, 'LIMIT'), 403);
 });
 
+/** Deletes the recipe and every bake made from it. */
 recipes.delete('/:id', async (c) => {
   const id = c.req.param('id');
-  if (!ID_RE.test(id)) return c.json(err('Bad recipe id.', 'BAD_ID'), 400);
-  await c.env.DB.prepare('DELETE FROM recipe WHERE id = ?1 AND user_id = ?2').bind(id, c.get('userId')).run();
+  const bad = badId(c, id);
+  if (bad) return bad;
+  const userId = c.get('userId');
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM bake WHERE recipe_id = ?1 AND user_id = ?2').bind(id, userId),
+    c.env.DB.prepare('DELETE FROM recipe WHERE id = ?1 AND user_id = ?2').bind(id, userId),
+  ]);
   return c.body(null, 204);
 });

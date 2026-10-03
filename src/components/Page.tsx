@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEventHandler, type ReactNode } from 'react';
 
 type Props = {
   title: string;
@@ -10,9 +10,10 @@ type Props = {
   className?: string;
   /** Extra row pinned under the bar (e.g. a section switcher). */
   below?: ReactNode;
+  onClickCapture?: MouseEventHandler;
 };
 
-export function Page({ title, large, left, right, children, className, below }: Props) {
+export function Page({ title, large, left, right, children, className, below, onClickCapture }: Props) {
   const sentinel = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState(!large);
 
@@ -26,7 +27,7 @@ export function Page({ title, large, left, right, children, className, below }: 
   }, [large]);
 
   return (
-    <div className={'page' + (className ? ' ' + className : '')}>
+    <div className={'page' + (className ? ' ' + className : '')} onClickCapture={onClickCapture}>
       <header className={'nav' + (collapsed ? ' collapsed' : '')}>
         <div className="nav-row">
           <div className="nav-side">{left}</div>

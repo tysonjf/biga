@@ -357,9 +357,96 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export const toLocalInput = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-export function roundedNow(): Date {
+/** Now, rounded down to `step` minutes, so something started "now" has already started. */
+export function roundedNow(step = 5): Date {
   const d = new Date();
   d.setSeconds(0, 0);
-  d.setMinutes(Math.round(d.getMinutes() / 15) * 15);
+  d.setMinutes(Math.floor(d.getMinutes() / step) * step);
   return d;
+}
+
+/** A stored "YYYY-MM-DDTHH:mm" start as a Date, or null when it isn't set. */
+export function parseStart(v: string): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export const fmtDate = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+
+/* ---------- clock changes ---------- */
+
+export type ClockChange = {
+  /** The first minute on the new time. */
+  at: Date;
+  /** How far the clocks move: +60 when they go forward an hour, −60 when they go back. */
+  minutes: number;
+};
+
+/**
+ * The first daylight-saving change between two moments, if any. Schedules are worked out in real
+ * elapsed time, so the yeast always gets its hours, but the clock times after a change look an hour
+ * off unless you know it's there.
+ */
+export function clockChange(from: Date, to: Date): ClockChange | null {
+  const before = from.getTimezoneOffset();
+  if (to.getTimezoneOffset() === before) return null;
+  // Binary search, a minute at a time, for the first minute on the new offset.
+  let lo = Math.floor(from.getTime() / 60_000);
+  let hi = Math.ceil(to.getTime() / 60_000);
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (new Date(mid * 60_000).getTimezoneOffset() === before) lo = mid;
+    else hi = mid;
+  }
+  const at = new Date(hi * 60_000);
+  return { at, minutes: before - at.getTimezoneOffset() };
+}
+
+/** "Clocks go forward 1 hour at 2:00 am on Sun 4 Oct". */
+export function describeClockChange(c: ClockChange): string {
+  // The wall-clock time the change happens at, on the old time (2:00 am, not the 3:00 am it becomes).
+  const oldWall = new Date(c.at.getTime() - (c.at.getTimezoneOffset() + c.minutes) * 60_000);
+  const clock = oldWall.toLocaleString(undefined, { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  const amount = Math.abs(c.minutes) === 60 ? '1 hour' : fmtDur(Math.abs(c.minutes));
+  return `Clocks go ${c.minutes > 0 ? 'forward' : 'back'} ${amount} at ${clock} on ${fmtDate(c.at)}`;
+}
+
+/* ---------- where a bake is up to ---------- */
+
+export type BakeStatus = {
+  phase: 'planned' | 'running' | 'ready' | 'done';
+  title: string;
+  /** The step in progress (the last one that has started), if any. */
+  current: Step | null;
+  next: Step | null;
+  /** 0 → 1 from mixing the preferment to ready to bake. */
+  progress: number;
+};
+
+/** How long after "ready to bake" a bake still counts as on the go. */
+export const BAKE_GRACE_MIN = 6 * 60;
+
+export function bakeStatus(kind: Kind, tl: Timeline, now: Date): BakeStatus {
+  const { steps } = tl;
+  const t = now.getTime();
+  const i = steps.findLastIndex((s) => s.at.getTime() <= t);
+  const current = i >= 0 ? steps[i] : null;
+  const next = steps[i + 1] ?? null;
+  const start = steps[0].at.getTime();
+  const progress = Math.min(1, Math.max(0, (t - start) / Math.max(1, tl.bake.getTime() - start)));
+  if (!current) return { phase: 'planned', title: 'Not started yet', current, next, progress };
+  if (current.key === 'bake') {
+    const done = t >= tl.bake.getTime() + BAKE_GRACE_MIN * 60_000;
+    return { phase: done ? 'done' : 'ready', title: done ? 'Baked' : 'Ready to bake', current, next: null, progress };
+  }
+  const fridge = steps.some((s) => s.key === 'fridge');
+  const titles: Record<string, string> = {
+    start: `${MODELS[kind].name} fermenting`,
+    ready: 'Final mix and bulk',
+    ball: fridge ? 'Balls resting' : 'Balls proofing',
+    fridge: 'Balls in the fridge',
+    out: 'Balls warming up',
+  };
+  return { phase: 'running', title: titles[current.key] ?? current.title, current, next, progress };
 }

@@ -105,7 +105,7 @@ The first run also creates the `biga-db` D1 database and its tables. Later runs 
 - [ ] Open the URL on your computer. You should see the sign-in screen with the dough ball.
 - [ ] Use **Create account** to sign up with a real email and a 12+ character password.
   - Most of the time Turnstile is invisible; sometimes it shows a checkbox.
-- [ ] Create a biga recipe and change a few numbers. Reload the page: your changes should still be there.
+- [ ] Create a biga recipe and change a few numbers. Reload the page: your changes should still be there, and the recipe opens locked (tap **Edit** to change it).
 - [ ] On your phone, open the same URL and sign in.
   - **iPhone (Safari):** Share → **Add to Home Screen** → keep "Open as Web App" on.
   - **Android (Chrome):** ⋮ menu → **Install app** / **Add to Home screen**.

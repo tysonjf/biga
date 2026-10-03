@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, normalise, type Settings } from '../../shared/recipe';
-import { balance, blend, calc, MODELS, rebalance, roomFactor, timeline, waterTemp } from './dough';
+import { bakeStatus, balance, blend, calc, clockChange, describeClockChange, MODELS, rebalance, roomFactor, timeline, waterTemp } from './dough';
 
 const biga = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.biga), ...o });
 const poolish = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.poolish), ...o });
@@ -180,14 +180,68 @@ describe('timeline', () => {
   });
 });
 
+describe('clock changes', () => {
+  // Sydney: clocks go forward at 2:00 am on Sun 4 Oct 2026 and back at 3:00 am on Sun 4 Apr 2027.
+  it('gives a 12 h biga its full 12 hours across the change, so 7:30 pm is ready at 8:30 am', () => {
+    const start = new Date('2026-10-03T19:30');
+    const t = timeline('biga', biga({ hours: 12 }), start);
+    expect((t.ready.getTime() - start.getTime()) / 3_600_000).toBe(12);
+    expect([t.ready.getHours(), t.ready.getMinutes()]).toEqual([8, 30]);
+  });
+
+  it('finds the minute the clocks go forward', () => {
+    const c = clockChange(new Date('2026-10-03T19:30'), new Date('2026-10-04T10:30'))!;
+    expect(c.minutes).toBe(60);
+    expect([c.at.getDate(), c.at.getHours(), c.at.getMinutes()]).toEqual([4, 3, 0]);
+    expect(describeClockChange(c)).toMatch(/^Clocks go forward 1 hour at 2:00/);
+  });
+
+  it('finds the minute the clocks go back', () => {
+    const c = clockChange(new Date('2027-04-03T20:00'), new Date('2027-04-04T11:00'))!;
+    expect(c.minutes).toBe(-60);
+    expect(describeClockChange(c)).toMatch(/^Clocks go back 1 hour at 3:00/);
+  });
+
+  it('says nothing when the clocks stay put', () => {
+    expect(clockChange(new Date('2026-10-05T19:30'), new Date('2026-10-06T19:30'))).toBeNull();
+  });
+});
+
+describe('bake status', () => {
+  const start = new Date('2026-10-10T18:00');
+  const t = timeline('biga', biga({ hours: 12 }), start); // ready 6:00, balled 7:00, bake 9:00
+  const at = (iso: string) => bakeStatus('biga', t, new Date(iso));
+
+  it('follows the bake from plan to plate', () => {
+    expect(at('2026-10-10T17:00')).toMatchObject({ phase: 'planned', next: { key: 'start' } });
+    expect(at('2026-10-10T20:00')).toMatchObject({ phase: 'running', title: 'Biga fermenting', next: { key: 'ready' } });
+    expect(at('2026-10-11T06:30')).toMatchObject({ phase: 'running', title: 'Final mix and bulk', next: { key: 'ball' } });
+    expect(at('2026-10-11T08:00')).toMatchObject({ phase: 'running', title: 'Balls proofing', next: { key: 'bake' } });
+    expect(at('2026-10-11T09:30')).toMatchObject({ phase: 'ready', next: null });
+    expect(at('2026-10-11T16:00')).toMatchObject({ phase: 'done', title: 'Baked' });
+  });
+
+  it('tracks progress from mixing to baking', () => {
+    expect(at('2026-10-10T17:00').progress).toBe(0);
+    expect(at('2026-10-11T01:30').progress).toBeCloseTo(0.5, 6);
+    expect(at('2026-10-11T12:00').progress).toBe(1);
+  });
+
+  it('knows the balls are in the fridge on a bake-later schedule', () => {
+    const f = timeline('biga', biga({ hours: 12, fridge: true }), start);
+    expect(bakeStatus('biga', f, new Date('2026-10-11T20:00'))).toMatchObject({ title: 'Balls in the fridge', next: { key: 'out' } });
+  });
+});
+
 describe('normalise', () => {
   it('clamps junk and fills defaults', () => {
-    const s = normalise('biga', { hyd: 999, balls: -3, flours: [{ name: 'x'.repeat(99), pct: 'a' }, { name: 'B', pct: 100 }], start: 'nope', evil: 1 });
+    const s = normalise('biga', { hyd: 999, balls: -3, flours: [{ name: 'x'.repeat(99), pct: 'a' }, { name: 'B', pct: 100 }], start: '2026-10-03T17:00', evil: 1 });
     expect(s.hyd).toBe(90);
     expect(s.balls).toBe(1);
     expect(s.flours[0].name).toHaveLength(40);
     expect(s.flours[0].pct).toBe(0);
-    expect(s.start).toBe('');
+    // Recipes no longer carry a start time: that belongs to a bake.
+    expect((s as Record<string, unknown>).start).toBeUndefined();
     expect((s as Record<string, unknown>).evil).toBeUndefined();
   });
 

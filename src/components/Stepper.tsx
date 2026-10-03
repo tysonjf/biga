@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { tick } from '../lib/haptics';
+import { useLocked } from '../lib/lock';
 
 type Props = {
   label: string;
@@ -81,13 +82,17 @@ function useHold(fn: () => void) {
 
 export function Stepper({ label, unit, value, onChange, step = 1, min, max, dec = 0, show, bump, parse, big, hideLabel }: Props) {
   const id = useId();
+  const locked = useLocked();
   const [text, setText] = useState<string | null>(null);
   const valueRef = useRef(value);
   valueRef.current = value;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
   const display = show ? show(value) : fmt(value, dec);
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
 
   const go = (dir: 1 | -1) => {
+    if (lockedRef.current) return;
     const cur = valueRef.current;
     const next = bump ? bump(cur, dir) : clamp(+(cur + dir * step).toFixed(dec));
     if (next !== cur) {
@@ -100,13 +105,13 @@ export function Stepper({ label, unit, value, onChange, step = 1, min, max, dec 
   const inc$ = useHold(() => go(1));
 
   return (
-    <div className={'stp' + (big ? ' big' : '')}>
+    <div className={'stp' + (big ? ' big' : '')} data-locked={locked ? '' : undefined}>
       <label htmlFor={id} className={hideLabel ? 'sr-only' : undefined}>
         <span>{label}</span>
         {unit ? <span className="u">{unit}</span> : null}
       </label>
       <div className="ctl">
-        <button type="button" aria-label={`Decrease ${label}`} data-off={!bump && value <= min ? '' : undefined} {...dec$}>
+        <button type="button" aria-label={`Decrease ${label}`} aria-hidden={locked || undefined} tabIndex={locked ? -1 : undefined} data-off={!bump && value <= min ? '' : undefined} {...dec$}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg>
         </button>
         <input
@@ -117,12 +122,15 @@ export function Stepper({ label, unit, value, onChange, step = 1, min, max, dec 
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
+          readOnly={locked}
           value={text ?? display}
           onFocus={(e) => {
+            if (locked) return;
             setText(fmt(value, dec));
             requestAnimationFrame(() => e.target.select());
           }}
           onChange={(e) => {
+            if (locked) return;
             setText(e.target.value);
             const v = parseFloat(e.target.value.replace(',', '.'));
             if (Number.isFinite(v)) onChange(parse ? parse(v) : clamp(v));
@@ -142,7 +150,7 @@ export function Stepper({ label, unit, value, onChange, step = 1, min, max, dec 
             }
           }}
         />
-        <button type="button" aria-label={`Increase ${label}`} data-off={!bump && value >= max ? '' : undefined} {...inc$}>
+        <button type="button" aria-label={`Increase ${label}`} aria-hidden={locked || undefined} tabIndex={locked ? -1 : undefined} data-off={!bump && value >= max ? '' : undefined} {...inc$}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12M12 6v12" /></svg>
         </button>
       </div>

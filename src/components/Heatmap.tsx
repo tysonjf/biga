@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import type { Model } from '../lib/dough';
+import { clockChange, describeClockChange, type Model } from '../lib/dough';
+import { useLocked } from '../lib/lock';
 
 type Props = {
   model: Model;
@@ -8,6 +9,8 @@ type Props = {
   onPick: (t: number, h: number) => void;
   /** When set, each column header shows when the preferment is ready and when the dough is ready to bake. */
   start: Date | null;
+  /** The start is "now" (a recipe, not a bake). */
+  live?: boolean;
   after: number;
   /** Bumped when the selection changed from outside the chart, so we scroll it into view. */
   reveal: number;
@@ -68,9 +71,13 @@ const Row = memo(function Row({
   );
 });
 
-export function Heatmap({ model, temp, hours, onPick, start, after, reveal }: Props) {
+export function Heatmap({ model, temp, hours, onPick, start, live, after, reveal }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
+  const locked = useLocked();
   const { temps, hours: H, idy } = model;
+  const pre = model.name.toLowerCase();
+  // A clock change anywhere across the chart shifts the later column times by an hour.
+  const change = start ? clockChange(start, new Date(start.getTime() + (H.at(-1)! * 60 + after) * 60_000)) : null;
 
   const { bucket, lo, hi } = useMemo(() => {
     const lmin = Math.log(idy(temps.at(-1)!, H.at(-1)!));
@@ -110,18 +117,18 @@ export function Heatmap({ model, temp, hours, onPick, start, after, reveal }: Pr
   // One delegated listener for ~300 cells.
   useEffect(() => {
     const el = wrap.current;
-    if (!el) return;
+    if (!el || locked) return;
     const onClick = (e: MouseEvent) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('td button');
       if (b) onPick(+b.dataset.t!, +b.dataset.h!);
     };
     el.addEventListener('click', onClick);
     return () => el.removeEventListener('click', onClick);
-  }, [onPick]);
+  }, [onPick, locked]);
 
   return (
     <>
-      <div className="heat-wrap" ref={wrap}>
+      <div className="heat-wrap" ref={wrap} data-locked={locked ? '' : undefined}>
         <table className="heat">
           <thead>
             <tr>
@@ -172,7 +179,8 @@ export function Heatmap({ model, temp, hours, onPick, start, after, reveal }: Pr
         </span>
         {start ? (
           <span className="legend-note">
-            Column times: when the {model.name.toLowerCase()} is ready, and when the dough is ready to bake
+            {live ? 'Column times if you start now' : 'Column times'}: when the {pre} is ready, and when the dough is ready to bake.
+            {change ? ` ${describeClockChange(change)}, and the times allow for it.` : null}
           </span>
         ) : null}
       </div>
