@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, normalise, type Settings } from '../../shared/recipe';
-import { blend, calc, MODELS, roomFactor, timeline, waterTemp } from './dough';
+import { balance, blend, calc, MODELS, rebalance, roomFactor, timeline, waterTemp } from './dough';
 
 const biga = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.biga), ...o });
 const poolish = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.poolish), ...o });
@@ -88,6 +88,46 @@ describe('flours', () => {
   });
 });
 
+describe('flour shares stay at 100%', () => {
+  const sum = (v: number[]) => v.reduce((a, b) => a + b, 0);
+
+  it('gives two flours the complement', () => {
+    expect(rebalance([100, 0], 0, 70)).toEqual([70, 30]);
+    expect(rebalance([70, 30], 1, 45)).toEqual([55, 45]);
+  });
+
+  it('never lets one flour go past 100%', () => {
+    expect(rebalance([60, 40], 0, 150)).toEqual([100, 0]);
+  });
+
+  it('takes an increase from the biggest other flour first', () => {
+    expect(rebalance([60, 30, 10], 0, 70)).toEqual([70, 20, 10]);
+    expect(rebalance([60, 30, 10], 0, 95)).toEqual([95, 0, 5]);
+  });
+
+  it('gives a decrease to the biggest other flour', () => {
+    expect(rebalance([60, 30, 10], 0, 50)).toEqual([50, 40, 10]);
+    expect(rebalance([60, 30, 10], 2, 5)).toEqual([65, 30, 5]);
+  });
+
+  it('leaves small additions alone while the main flour gives way', () => {
+    const a = rebalance([100, 0, 0], 1, 5);
+    expect(a).toEqual([95, 5, 0]);
+    expect(rebalance(a, 2, 5)).toEqual([90, 5, 5]);
+  });
+
+  it('repairs shares that were saved out of balance', () => {
+    expect(sum(rebalance([100, 30], 1, 35))).toBeCloseTo(100, 9);
+    expect(rebalance([100, 30], 1, 35)).toEqual([65, 35]);
+    expect(balance([33.3, 33.3, 33.3])).toEqual([33.4, 33.3, 33.3]);
+  });
+
+  it('keeps a lone flour at 100%', () => {
+    expect(balance([40])).toEqual([100]);
+    expect(rebalance([100], 0, 50)).toEqual([100]);
+  });
+});
+
 describe('final yeast vs proofing room', () => {
   it('leaves the final IDY alone in an 18–24 °C room', () => {
     expect(roomFactor(18)).toBe(1);
@@ -142,7 +182,7 @@ describe('timeline', () => {
 
 describe('normalise', () => {
   it('clamps junk and fills defaults', () => {
-    const s = normalise('biga', { hyd: 999, balls: -3, flours: [{ name: 'x'.repeat(99), pct: 'a' }], start: 'nope', evil: 1 });
+    const s = normalise('biga', { hyd: 999, balls: -3, flours: [{ name: 'x'.repeat(99), pct: 'a' }, { name: 'B', pct: 100 }], start: 'nope', evil: 1 });
     expect(s.hyd).toBe(90);
     expect(s.balls).toBe(1);
     expect(s.flours[0].name).toHaveLength(40);
@@ -159,6 +199,10 @@ describe('normalise', () => {
       { name: 'B', pct: 30, fin: 100 },
     ]);
     expect(normalise('biga', {}).split).toBe(false);
+  });
+
+  it('makes a lone flour 100%', () => {
+    expect(normalise('biga', { flours: [{ name: 'A', pct: 40, fin: 10 }] }).flours).toEqual([{ name: 'A', pct: 100, fin: 100 }]);
   });
 
   it('forces poolish hydration to 100%', () => {

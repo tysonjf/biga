@@ -161,6 +161,35 @@ export function blend(c: Calc): number[] {
   return out;
 }
 
+const r1 = (v: number) => Math.round(v * 10) / 10;
+
+/**
+ * Makes a column of flour shares add up to exactly 100%. The biggest of the other flours (usually
+ * the main flour) makes up the difference: it takes any shortfall, and an excess comes off the
+ * biggest flours first. Ties go to the flour higher in the list. The flour at index `keep` is left
+ * as it is. A single flour is always 100%.
+ */
+export function balance(pcts: number[], keep = -1): number[] {
+  if (pcts.length < 2) return pcts.map(() => 100);
+  const out = pcts.map((p) => r1(Math.min(100, Math.max(0, +p || 0))));
+  const others = out
+    .map((_, j) => j)
+    .filter((j) => j !== keep)
+    .sort((a, b) => out[b] - out[a] || a - b);
+  let diff = r1(100 - out.reduce((a, p) => a + p, 0));
+  if (diff > 0) out[others[0]] = r1(out[others[0]] + diff);
+  for (const j of others) {
+    if (diff >= 0) break;
+    const take = Math.min(out[j], -diff);
+    out[j] = r1(out[j] - take);
+    diff = r1(diff + take);
+  }
+  return out;
+}
+
+/** Sets flour `i` to `v`% and lets the others make up the difference (see `balance`). */
+export const rebalance = (pcts: number[], i: number, v: number) => balance(pcts.map((p, j) => (j === i ? v : p)), i);
+
 export function calc(kind: Kind, s: Settings): Calc {
   const m = MODELS[kind];
   const temp = nearest(m.temps, s.temp);

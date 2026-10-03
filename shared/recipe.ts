@@ -138,6 +138,8 @@ export function normalise(kind: Kind, raw: unknown): Settings {
         const pct = share(f.pct) ?? 0;
         return { name: typeof f.name === 'string' ? f.name.slice(0, LIMITS.flourName) : 'Flour', pct, fin: share(f.fin) ?? pct };
       });
+    // A lone flour is the whole dough, whatever was stored.
+    if (flours.length === 1) flours[0].pct = flours[0].fin = 100;
     if (flours.length) out.flours = flours;
   }
   return out;

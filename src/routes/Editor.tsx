@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { FIELDS, KIND_NAME, LIMITS, type NumKey, type Recipe, type Settings } from '../../shared/recipe';
 import {
+  balance,
   blend,
   calc,
+  rebalance,
   fmtClock,
   fmtDay,
   fmtWeekday,
@@ -591,6 +593,19 @@ function Flours({
   );
   const upd = (i: number, patch: Partial<Settings['flours'][number]>) =>
     setS((p) => ({ ...p, flours: p.flours.map((f, j) => (j === i ? { ...f, ...patch } : f)) }));
+  // Each column stays at 100%: changing one share moves the others. Without the split, both columns match.
+  const setShare = (i: number, k: 'pct' | 'fin', v: number) =>
+    setS((p) => {
+      const col = rebalance(p.flours.map((f) => f[k]), i, v);
+      return { ...p, flours: p.flours.map((f, j) => (p.split ? { ...f, [k]: col[j] } : { ...f, pct: col[j], fin: col[j] })) };
+    });
+  const removeFlour = (i: number) =>
+    setS((p) => {
+      const rest = p.flours.filter((_, j) => j !== i);
+      const pct = balance(rest.map((f) => f.pct));
+      const fin = balance(rest.map((f) => f.fin));
+      return { ...p, flours: rest.map((f, j) => ({ ...f, pct: pct[j], fin: fin[j] })) };
+    });
   // Switching on starts both stages on the current blend. Switching off keeps the overall blend.
   const toggleSplit = (on: boolean) =>
     setS((p) => {
@@ -599,7 +614,7 @@ function Flours({
       return { ...p, split: false, flours: p.flours.map((f, i) => ({ ...f, pct: b[i], fin: b[i] })) };
     });
   const overall = split ? blend(c) : null;
-  const pctStepper = { unit: '%', step: 5, min: 0, max: 100 };
+  const pctStepper = { unit: '%', step: 5, min: 0, max: 100, dec: 1 };
   return (
     <>
       <div className="sub-h">
@@ -628,24 +643,31 @@ function Flours({
             />
             {split ? (
               <>
-                <Stepper label={`In the ${pre}`} {...pctStepper} value={f.pct} onChange={(v) => upd(i, { pct: v })} />
-                <Stepper label="In the final dough" {...pctStepper} value={f.fin} onChange={(v) => upd(i, { fin: v })} />
+                <Stepper label={`In the ${pre}`} {...pctStepper} value={f.pct} onChange={(v) => setShare(i, 'pct', v)} />
+                <Stepper label="In the final dough" {...pctStepper} value={f.fin} onChange={(v) => setShare(i, 'fin', v)} />
               </>
+            ) : s.flours.length > 1 ? (
+              <Stepper label={`Flour ${i + 1} share`} hideLabel {...pctStepper} value={f.pct} onChange={(v) => setShare(i, 'pct', v)} />
             ) : (
-              <Stepper label={`Flour ${i + 1} share`} hideLabel {...pctStepper} value={f.pct} onChange={(v) => upd(i, { pct: v, fin: v })} />
+              <div className="stp fixed">
+                <div className="fixed-val">100%</div>
+              </div>
             )}
             <button
               className="xbtn"
               type="button"
               aria-label={`Remove flour ${i + 1}`}
               disabled={s.flours.length < 2}
-              onClick={() => setS((p) => ({ ...p, flours: p.flours.filter((_, j) => j !== i) }))}
+              onClick={() => removeFlour(i)}
             >
               <Icon name="trash" size={18} />
             </button>
           </div>
         ))}
       </div>
+      {s.flours.length > 2 ? (
+        <p className="note">Shares always add up to 100%. When you change one, the biggest of the other flours makes up the difference.</p>
+      ) : null}
       {overall ? (
         <p className="note">
           Overall: {s.flours.map((f, i) => `${f.name || 'Flour'} ${num(overall[i], 1)}%`).join(' · ')}
@@ -666,8 +688,12 @@ function Flours({
             type="button"
             onClick={() =>
               setS((p) => {
-                const left = (k: 'pct' | 'fin') => Math.max(0, 100 - p.flours.reduce((a, f) => a + (+f[k] || 0), 0));
-                return { ...p, flours: [...p.flours, { name: `Flour ${p.flours.length + 1}`, pct: left('pct'), fin: left('fin') }] };
+                // The new flour starts with whatever is left (usually 0%).
+                const n = p.flours.length;
+                const col = (k: 'pct' | 'fin') => balance([...p.flours.map((f) => f[k]), 100 - p.flours.reduce((a, f) => a + (+f[k] || 0), 0)], n);
+                const pct = col('pct');
+                const fin = col('fin');
+                return { ...p, flours: [...p.flours, { name: `Flour ${n + 1}`, pct: 0, fin: 0 }].map((f, j) => ({ ...f, pct: pct[j], fin: fin[j] })) };
               })
             }
           >

@@ -75,6 +75,7 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
 - **Flours:** by default each flour goes into the preferment and the final dough in the same proportion.
   - Turn on **Set flours per stage** to give each flour its own share of each stage, for example all the bread flour in the biga and all the Tipo 00 in the final dough.
   - The Dough card then shows the overall blend that results.
+  - The shares in each stage always add up to 100%. Changing one moves the biggest of the other flours, which is usually the main one.
 - **Dough temperature:** the ball timings assume the dough comes off the mixer at 24–26 °C and the balls proof in an 18–24 °C room.
   - The water temperature comes from a mass-weighted energy balance across preferment, flour, water and mixer heat.
   - The classic "×4" rule of thumb gets it wrong when most of the water is already in a stiff biga.
