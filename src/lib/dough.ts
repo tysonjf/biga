@@ -37,10 +37,12 @@ export const MODELS: Record<Kind, Model> = {
     name: 'Poolish',
     temps: range(14, 28),
     hours: range(6, 30, 2),
-    idy: model(0.1, 18, 16, 8, 1.5),
+    // Anchored on the classic overnight poolish: Hamelman uses 0.07% instant yeast and Forkish 0.08%
+    // for 12–16 h at about 21 °C. That's also the middle of the published schedules overall.
+    idy: model(0.075, 21, 14, 8, 1.5),
     ready:
       'Ready when it has risen 2–3×, is covered in bubbles and has domed with the centre just starting to dip, leaving tide marks on the container. Fully collapsed, soupy or smelling of acetone means it went too far.',
-    note: 'About 0.1% IDY at 18 °C for 16 hours (roughly a third of a biga’s dose: wet preferments ferment faster), doubling in activity every 8 °C. Fitted to published poolish schedules, which disagree by ±60%, so trust the bubbles over the clock.',
+    note: 'About 0.075% IDY at 21 °C for 14 hours, the classic overnight poolish (Hamelman uses 0.07%, Forkish 0.08%), doubling in activity every 8 °C and scaling down for longer ferments. Wet preferments ferment faster, so that’s roughly a quarter of a biga’s dose. Published schedules disagree by about ±50%, so trust the bubbles over the clock.',
   },
 };
 

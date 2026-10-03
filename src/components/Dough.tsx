@@ -59,6 +59,12 @@ export function useLiveStart() {
   return useMemo(() => new Date(Math.round(now.getTime() / 300_000) * 300_000), [now]);
 }
 
+/** A yeast percentage: three decimals for the tiny doses of long, wet ferments (0.075%, not 0.07%). */
+const idyPct = (fraction: number) => {
+  const v = fraction * 100;
+  return `${num(v, v < 0.1 ? 3 : 2)}%`;
+};
+
 export const doughSummary = (s: Settings, c: Calc) => `${s.balls} × ${s.bw} g · ${num(s.hyd, 1)}% hydration · ${g0(c.dough)} dough`;
 
 type StepperProps = Parameters<typeof Stepper>[0];
@@ -117,7 +123,7 @@ export function YeastCard({ d, order }: { d: Dough; order?: number }) {
         />
       </div>
       <div className="stats">
-        <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={`${(c.preIdy * 100).toFixed(2)}%`} />
+        <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
         <Stat k={`${m.name} yeast`} v={g1(c.pre.yeast)} />
         {live || !tl ? (
           <>
@@ -416,7 +422,7 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
       items: [
         ...flourItems('pre'),
         { n: 'Water', sub: `${kind === 'poolish' ? 100 : num(s.bh, 0)}% of ${pre} flour`, g: g0(c.pre.water) },
-        { n: 'Instant dry yeast', short: 'Yeast', tag: 'IDY', sub: `${(c.preIdy * 100).toFixed(2)}% · ${c.hours} h at ${c.temp} °C`, g: g1(c.pre.yeast) },
+        { n: 'Instant dry yeast', short: 'Yeast', tag: 'IDY', sub: `${idyPct(c.preIdy)} · ${c.hours} h at ${c.temp} °C`, g: g1(c.pre.yeast) },
         { n: `Total ${pre}`, g: g0(c.pre.total), sum: true },
       ],
     },

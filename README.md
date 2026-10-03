@@ -79,9 +79,10 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
 ## The maths
 
 - **Biga yeast:** about 0.3% IDY at 18 °C for 16 h. Activity doubles every 8 °C, and longer ferments need less yeast (×(16/h)^1.2). This is the original chart.
-- **Poolish yeast:** about 0.1% IDY at 18 °C for 16 h, with the same 8 °C doubling and a steeper time curve (×(16/h)^1.5).
-  - Wet preferments ferment faster, so this is roughly a third of a biga's dose.
-  - It's fitted to published schedules (Hamelman, Italian tables, Weekend Bakery, pizzamaking.com), which disagree with each other by ±60%. Trust the bubbles over the clock.
+- **Poolish yeast:** about 0.075% IDY at 21 °C for 14 h, with the same 8 °C doubling and a steeper time curve (×(14/h)^1.5). New poolish recipes start there.
+  - That's the classic overnight poolish: Hamelman's *Bread* uses 0.07% instant yeast and Forkish's *Flour Water Salt Yeast* 0.08%, for 12–16 h at about 21 °C. It's also the middle of the published schedules overall (Modernist Pizza, King Arthur, Weekend Bakery, Calvel, the Italian "1 g fresh yeast per kg" rule).
+  - Wet preferments ferment faster, so this is roughly a quarter of a biga's dose.
+  - The sources disagree with each other by about ±50%. Trust the bubbles over the clock.
 - **Flours:** by default each flour goes into the preferment and the final dough in the same proportion.
   - Turn on **Set flours per stage** to give each flour its own share of each stage, for example all the bread flour in the biga and all the Tipo 00 in the final dough.
   - The Dough card then shows the overall blend that results.

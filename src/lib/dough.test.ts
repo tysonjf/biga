@@ -11,19 +11,30 @@ describe('yeast models', () => {
     expect(MODELS.biga.idy(26, 16)).toBeCloseTo(0.15, 6); // halves every 8 °C
   });
 
-  it('poolish needs roughly a third of the biga dose for the same time and temperature', () => {
-    expect(MODELS.poolish.idy(18, 16)).toBeCloseTo(0.1, 6);
+  it('poolish needs roughly a quarter of the biga dose for the same time and temperature', () => {
     const ratio = MODELS.poolish.idy(20, 16) / MODELS.biga.idy(20, 16);
-    expect(ratio).toBeGreaterThan(0.25);
-    expect(ratio).toBeLessThan(0.45);
+    expect(ratio).toBeGreaterThan(0.2);
+    expect(ratio).toBeLessThan(0.35);
   });
 
-  it('matches published poolish schedules within their spread', () => {
-    // Weekend Bakery ~0.3% for 8 h at ~20 °C; Hamelman ~0.067% for 12–16 h at ~21 °C
+  it('defaults to the standard overnight poolish: 0.075% IDY, 14 h at 21 °C', () => {
+    expect(DEFAULTS.poolish).toMatchObject({ temp: 21, hours: 14, bh: 100 });
+    expect(calc('poolish', poolish()).preIdy * 100).toBeCloseTo(0.075, 6);
+  });
+
+  it('matches the classic overnight poolish recipes', () => {
+    const near = (got: number, want: number, within: number) => expect(Math.abs(got / want - 1)).toBeLessThanOrEqual(within);
+    near(MODELS.poolish.idy(21, 14), 0.07, 0.1); // Hamelman, Bread: 0.07% instant, 12–16 h at ~21 °C
+    near(MODELS.poolish.idy(19.5, 13), 0.08, 0.2); // Forkish, Flour Water Salt Yeast: 0.4 g per 500 g, 12–14 h at 18–21 °C
+    near(MODELS.poolish.idy(21, 12), 0.1, 0.1); // Modernist Pizza NY poolish: 0.06 g per 60 g
+  });
+
+  it('stays within the spread of other published schedules', () => {
+    // Weekend Bakery ~0.3% for 8 h at ~20 °C; the Italian pizza rule ~0.04% (1 g fresh yeast per kg) for 16–18 h at 18–20 °C
     expect(MODELS.poolish.idy(20, 8)).toBeGreaterThan(0.15);
     expect(MODELS.poolish.idy(20, 8)).toBeLessThan(0.35);
-    expect(MODELS.poolish.idy(21, 14)).toBeGreaterThan(0.06);
-    expect(MODELS.poolish.idy(21, 14)).toBeLessThan(0.13);
+    expect(MODELS.poolish.idy(19, 17)).toBeGreaterThan(0.04);
+    expect(MODELS.poolish.idy(19, 17)).toBeLessThan(0.08);
   });
 });
 
@@ -174,7 +185,7 @@ describe('timeline', () => {
   });
 
   it('adds a fridge hold for a later bake', () => {
-    const t = timeline('poolish', poolish({ fridge: true, fridgeRest: 60, fridgeH: 16, temper: 120 }), start);
+    const t = timeline('poolish', poolish({ hours: 16, fridge: true, fridgeRest: 60, fridgeH: 16, temper: 120 }), start);
     expect(t.steps.map((s) => s.key)).toEqual(['start', 'ready', 'ball', 'fridge', 'out', 'bake']);
     expect((t.bake.getTime() - start.getTime()) / 3_600_000).toBeCloseTo(16 + 0.5 + 0.5 + 1 + 16 + 2, 6);
   });

@@ -100,7 +100,8 @@ const COMMON = {
 
 export const DEFAULTS: Record<Kind, Settings> = {
   biga: { ...COMMON, bp: 75, bh: 45, temp: 18, hours: 16 },
-  poolish: { ...COMMON, bw: 260, hyd: 68, salt: 2.8, fy: 0.15, bp: 30, bh: 100, temp: 20, hours: 16 },
+  // The standard overnight poolish: 12–16 h at room temperature (about 21 °C).
+  poolish: { ...COMMON, bw: 260, hyd: 68, salt: 2.8, fy: 0.15, bp: 30, bh: 100, temp: 21, hours: 14 },
 };
 
 export const KIND_NAME: Record<Kind, string> = { biga: 'Biga', poolish: 'Poolish' };
