@@ -9,53 +9,9 @@ An installable app (PWA) for planning biga and poolish pizza doughs to the hour.
 
 ## Deploy to your Cloudflare account
 
-Deploys run from GitHub Actions (`.github/workflows/deploy.yml`) on every push to `main`, or by hand from **Actions → Deploy → Run workflow**. The first run creates the D1 database, applies the migrations and deploys the Worker.
+**→ Follow [SETUP.md](SETUP.md).** It's a step-by-step checklist covering everything from creating `main` to installing the app on your phone, plus troubleshooting.
 
-### 1. Cloudflare API token and account ID
-
-- Cloudflare dashboard → **My Profile → API Tokens → Create Token**.
-  - Use the **Edit Cloudflare Workers** template.
-  - Add **Account → D1 → Edit**.
-  - Create the token and copy it.
-- Find your **Account ID** on **Workers & Pages → Overview**, in the right-hand column.
-- While you're there, note your **workers.dev subdomain**. The app will live at `https://biga.<subdomain>.workers.dev`.
-
-### 2. Turnstile widget (bot check)
-
-- Dashboard → **Turnstile → Add widget**.
-- Hostname: `biga.<subdomain>.workers.dev`, plus your custom domain if you add one later.
-- Widget mode: **Managed**.
-- Copy the **site key** and **secret key**.
-
-### 3. Two random secrets
-
-```sh
-openssl rand -base64 32   # → BETTER_AUTH_SECRET
-openssl rand -base64 32   # → PASSWORD_PEPPER
-```
-
-> ⚠️ Never change `PASSWORD_PEPPER` once people have signed up. Every existing password stops working.
-
-### 4. Add them to GitHub
-
-Repo → **Settings → Secrets and variables → Actions**.
-
-| Kind | Name | Value |
-|---|---|---|
-| Secret | `CLOUDFLARE_API_TOKEN` | token from step 1 |
-| Secret | `CLOUDFLARE_ACCOUNT_ID` | account ID from step 1 |
-| Secret | `BETTER_AUTH_SECRET` | random string from step 3 |
-| Secret | `PASSWORD_PEPPER` | random string from step 3 |
-| Secret | `TURNSTILE_SECRET_KEY` | Turnstile secret key |
-| Variable | `TURNSTILE_SITE_KEY` | Turnstile site key |
-| Variable | `APP_URL` *(optional)* | e.g. `https://biga.<subdomain>.workers.dev` |
-
-### 5. Run it
-
-Push to `main`, or run the **Deploy** workflow by hand. Open the URL that `wrangler deploy` prints in the log. On your phone:
-
-- **iOS:** Share → Add to Home Screen.
-- **Android:** ⋮ → Install app.
+In short: deploys run from GitHub Actions (`.github/workflows/deploy.yml`) on every push to `main`, or by hand from **Actions → Deploy → Run workflow**. The first run creates the D1 database, applies the migrations and deploys the Worker. You only need to add a few secrets to the repo first.
 
 ### Deploying from your own machine instead
 
