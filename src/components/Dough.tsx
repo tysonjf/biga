@@ -635,9 +635,65 @@ export type Section = { id: string; label: string };
 
 /** Pill links under the nav bar that jump to each card, highlighting the one in view. */
 export function JumpNav({ sections, onJump }: { sections: readonly Section[]; onJump?: (id: string) => void }) {
-  const active = useScrollSpy(sections.map((x) => x.id));
+  const ref = useRef<HTMLElement>(null);
+  const [active, setActive] = useState(sections[0].id);
+  // A tapped pill keeps its highlight until you scroll yourself: a short card at the very end of the
+  // page can't scroll up to the header, and the smooth scroll passes the cards in between.
+  const pinned = useRef(false);
+  const idsKey = sections.map((x) => x.id).join(',');
+
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      if (pinned.current) return;
+      const els = sections.map((x) => document.getElementById(x.id)).filter((el): el is HTMLElement => !!el);
+      if (!els.length) return;
+      const tops = els.map((el) => ({ id: el.id, top: el.getBoundingClientRect().top }));
+      // The card in view is the lowest one whose top has gone under the header (whatever its height:
+      // the notch, the pills). Cards can be in a different order on a phone, so go by position.
+      const line = (ref.current?.closest('.nav')?.getBoundingClientRect().bottom ?? 0) + 24;
+      const above = tops.filter((t) => t.top <= line);
+      const atEnd = innerHeight + scrollY >= document.documentElement.scrollHeight - 2;
+      const pick = atEnd
+        ? tops.filter((t) => t.top < innerHeight).sort((a, b) => b.top - a.top)[0]
+        : above.sort((a, b) => b.top - a.top)[0] ?? tops.sort((a, b) => a.top - b.top)[0];
+      if (pick) setActive(pick.id);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    const release = () => {
+      pinned.current = false;
+    };
+    update();
+    addEventListener('scroll', onScroll, { passive: true });
+    addEventListener('resize', onScroll);
+    // Anything that starts a scroll of your own hands the highlight back to the page.
+    const intents = ['touchstart', 'wheel', 'keydown', 'mousedown'] as const;
+    intents.forEach((ev) => addEventListener(ev, release, { passive: true }));
+    return () => {
+      cancelAnimationFrame(frame);
+      removeEventListener('scroll', onScroll);
+      removeEventListener('resize', onScroll);
+      intents.forEach((ev) => removeEventListener(ev, release));
+    };
+  }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the highlighted pill on screen in the sideways-scrolling row.
+  useEffect(() => {
+    const row = ref.current;
+    const pill = row?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!row || !pill) return;
+    const r = pill.getBoundingClientRect();
+    const box = row.getBoundingClientRect();
+    const pad = 24;
+    if (r.left < box.left + pad) row.scrollBy({ left: r.left - box.left - pad, behavior: 'smooth' });
+    else if (r.right > box.right - pad) row.scrollBy({ left: r.right - box.right + pad, behavior: 'smooth' });
+  }, [active]);
+
   return (
-    <nav className="jump" aria-label="Sections">
+    <nav className="jump" aria-label="Sections" ref={ref}>
       {sections.map((x) => (
         <a
           key={x.id}
@@ -646,6 +702,8 @@ export function JumpNav({ sections, onJump }: { sections: readonly Section[]; on
           onClick={(e) => {
             e.preventDefault();
             onJump?.(x.id);
+            setActive(x.id);
+            pinned.current = true;
             requestAnimationFrame(() => document.getElementById(x.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
           }}
         >
@@ -654,27 +712,4 @@ export function JumpNav({ sections, onJump }: { sections: readonly Section[]; on
       ))}
     </nav>
   );
-}
-
-function useScrollSpy(ids: readonly string[]) {
-  const [active, setActive] = useState(ids[0]);
-  const idsKey = ids.join(',');
-  const visible = useRef(new Map<string, number>());
-  useEffect(() => {
-    const els = ids.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) visible.current.set(e.target.id, e.isIntersecting ? e.intersectionRatio : 0);
-        // In page order, not list order: on a phone the cards can be shown in a different order.
-        const best = els
-          .filter((el) => (visible.current.get(el.id) ?? 0) > 0)
-          .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
-        if (best) setActive(best.id);
-      },
-      { rootMargin: '-120px 0px -45% 0px', threshold: [0, 0.01] },
-    );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  return active;
 }
