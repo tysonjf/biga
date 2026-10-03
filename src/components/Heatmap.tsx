@@ -6,7 +6,7 @@ type Props = {
   temp: number;
   hours: number;
   onPick: (t: number, h: number) => void;
-  /** When set, each column header shows when the dough would be ready to bake. */
+  /** When set, each column header shows when the preferment is ready and when the dough is ready to bake. */
   start: Date | null;
   after: number;
   /** Bumped when the selection changed from outside the chart, so we scroll it into view. */
@@ -18,6 +18,15 @@ const shortTime = (d: Date) => {
   const m = d.getMinutes();
   return `${h % 12 || 12}:${String(m).padStart(2, '0')}${h < 12 ? 'a' : 'p'}`;
 };
+
+function When({ d, bake }: { d: Date; bake?: boolean }) {
+  return (
+    <span className={'bt' + (bake ? ' bake' : '')}>
+      <b>{d.toLocaleString(undefined, { weekday: 'short' })}</b>
+      {shortTime(d)}
+    </span>
+  );
+}
 
 const Row = memo(function Row({
   t,
@@ -116,17 +125,27 @@ export function Heatmap({ model, temp, hours, onPick, start, after, reveal }: Pr
         <table className="heat">
           <thead>
             <tr>
-              <th scope="col">°C</th>
+              <th scope="col">
+                °C
+                {start ? (
+                  <>
+                    <span className="bt lbl">Ready</span>
+                    <span className="bt lbl bake">Bake</span>
+                  </>
+                ) : null}
+              </th>
               {H.map((h) => {
-                const d = start ? new Date(start.getTime() + (h * 60 + after) * 60_000) : null;
+                const at = (min: number) => (start ? new Date(start.getTime() + min * 60_000) : null);
+                const ready = at(h * 60);
+                const bake = at(h * 60 + after);
                 return (
                   <th scope="col" key={h} className={h === hours ? 'x' : undefined}>
                     {h}h
-                    {d ? (
-                      <span className="bt">
-                        <b>{d.toLocaleString(undefined, { weekday: 'short' })}</b>
-                        {shortTime(d)}
-                      </span>
+                    {ready && bake ? (
+                      <>
+                        <When d={ready} />
+                        <When d={bake} bake />
+                      </>
                     ) : null}
                   </th>
                 );
@@ -151,7 +170,11 @@ export function Heatmap({ model, temp, hours, onPick, start, after, reveal }: Pr
           </span>
           <span>{hi.toFixed(2)}</span>
         </span>
-        {start ? <span className="legend-note">Column times: dough ready to bake</span> : null}
+        {start ? (
+          <span className="legend-note">
+            Column times: when the {model.name.toLowerCase()} is ready, and when the dough is ready to bake
+          </span>
+        ) : null}
       </div>
     </>
   );

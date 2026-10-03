@@ -4,12 +4,13 @@ export type Theme = 'system' | 'light' | 'dark';
 const KEY = 'biga-theme';
 const subs = new Set<() => void>();
 
+// Dark unless someone picked Light or Auto. Keep in step with public/theme-init.js.
 function read(): Theme {
   try {
     const v = localStorage.getItem(KEY);
-    return v === 'light' || v === 'dark' ? v : 'system';
+    return v === 'light' || v === 'system' ? v : 'dark';
   } catch {
-    return 'system';
+    return 'dark';
   }
 }
 
@@ -37,8 +38,7 @@ darkQuery?.addEventListener('change', () => applyTheme());
 
 export function setTheme(t: Theme) {
   try {
-    if (t === 'system') localStorage.removeItem(KEY);
-    else localStorage.setItem(KEY, t);
+    localStorage.setItem(KEY, t);
   } catch {
     /* private mode */
   }

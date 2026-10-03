@@ -3,7 +3,11 @@
 export type Kind = 'biga' | 'poolish';
 export const KINDS: Kind[] = ['biga', 'poolish'];
 
-export type Flour = { name: string; pct: number };
+export type Flour = {
+  name: string;
+  pct: number; // share of the total flour, %; with `split`, share of the preferment's flour
+  fin: number; // with `split`: share of the final dough's flour, %
+};
 
 export type Settings = {
   balls: number; // dough balls
@@ -23,6 +27,7 @@ export type Settings = {
   bulk: number; // bulk rest, min
   proof: number; // ball proof at room temperature, min
   flours: Flour[];
+  split: boolean; // each flour gets its own share of the preferment and of the final dough
   start: string; // preferment mixed at, local "YYYY-MM-DDTHH:mm" ('' = not set)
   ddt: number; // target dough temperature straight after mixing, °C
   room: number; // room temperature where the dough is mixed and the balls proof, °C
@@ -77,7 +82,8 @@ const COMMON = {
   mix: 30,
   bulk: 30,
   proof: 120,
-  flours: [{ name: 'Tipo 00', pct: 100 }],
+  flours: [{ name: 'Tipo 00', pct: 100, fin: 100 }],
+  split: false,
   start: '',
   ddt: 25,
   room: 21,
@@ -106,6 +112,7 @@ export const LIMITS = {
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const round = (v: number, dec: number) => Number(v.toFixed(dec));
+const share = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? round(clamp(v, 0, 100), 1) : null);
 
 /** Coerce anything into a valid Settings object for `kind`, filling gaps with defaults. */
 export function normalise(kind: Kind, raw: unknown): Settings {
@@ -121,15 +128,16 @@ export function normalise(kind: Kind, raw: unknown): Settings {
   if (kind === 'poolish') out.bh = 100;
   else out.bh = clamp(out.bh, 40, 65);
   if (typeof src.fridge === 'boolean') out.fridge = src.fridge;
+  if (typeof src.split === 'boolean') out.split = src.split;
   if (typeof src.start === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(src.start)) out.start = src.start;
   if (Array.isArray(src.flours)) {
     const flours = src.flours
       .slice(0, LIMITS.flours)
       .filter((f): f is Record<string, unknown> => !!f && typeof f === 'object')
-      .map((f) => ({
-        name: typeof f.name === 'string' ? f.name.slice(0, LIMITS.flourName) : 'Flour',
-        pct: typeof f.pct === 'number' && Number.isFinite(f.pct) ? round(clamp(f.pct, 0, 100), 1) : 0,
-      }));
+      .map((f) => {
+        const pct = share(f.pct) ?? 0;
+        return { name: typeof f.name === 'string' ? f.name.slice(0, LIMITS.flourName) : 'Flour', pct, fin: share(f.fin) ?? pct };
+      });
     if (flours.length) out.flours = flours;
   }
   return out;

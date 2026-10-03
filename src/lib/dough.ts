@@ -114,6 +114,16 @@ export function waterTemp(p: {
 
 export type Line = { name: string; sub?: string; grams: number; small?: boolean };
 
+export type FlourLine = {
+  name: string;
+  /** Fraction of the preferment's flour and of the final dough's flour. */
+  preShare: number;
+  finShare: number;
+  /** Grams in the preferment and in the final dough. */
+  pre: number;
+  fin: number;
+};
+
 export type Calc = {
   model: Model;
   temp: number;
@@ -127,11 +137,29 @@ export type Calc = {
   water: number;
   pre: { flour: number; water: number; yeast: number; total: number };
   final: { flour: number; water: number; salt: number; oil: number; yeast: number };
-  flourSum: number;
-  flourShare: (pct: number) => number;
+  /** Flours are set separately for the preferment and the final dough. */
+  split: boolean;
+  flours: FlourLine[];
   mixWater: WaterTemp | null;
   warnings: string[];
 };
+
+/** Turns percentages into fractions of 1. All zero splits evenly. */
+function mix(pcts: number[]) {
+  const sum = pcts.reduce((a, v) => a + (+v || 0), 0);
+  return { sum, of: pcts.map((v) => (sum > 0 ? (+v || 0) / sum : 1 / pcts.length)) };
+}
+const off100 = (sum: number) => Math.abs(sum - 100) > 0.01;
+const rescaled = (sum: number) => (sum > 0 ? `add up to ${+sum.toFixed(1)}%, so they've been scaled to 100%` : `are all 0%, so they've been split evenly`);
+
+/** Each flour's share of all the flour in the dough, %, rounded to 0.1 and summing to exactly 100. */
+export function blend(c: Calc): number[] {
+  const raw = c.flours.map((f) => ((f.pre + f.fin) / c.flour) * 100);
+  const out = raw.map((v) => Math.round(v * 10) / 10);
+  const big = raw.indexOf(Math.max(...raw));
+  out[big] = Math.round((out[big] + 100 - out.reduce((a, v) => a + v, 0)) * 10) / 10;
+  return out;
+}
 
 export function calc(kind: Kind, s: Settings): Calc {
   const m = MODELS[kind];
@@ -157,8 +185,16 @@ export function calc(kind: Kind, s: Settings): Calc {
   const fO = FL * oil;
   const fY = FL * fy;
 
-  const flourSum = s.flours.reduce((a, f) => a + (+f.pct || 0), 0);
-  const flourShare = (pct: number) => (flourSum > 0 ? (+pct || 0) / flourSum : 0);
+  const split = s.split && s.flours.length > 1;
+  const preMix = mix(s.flours.map((f) => f.pct));
+  const finMix = split ? mix(s.flours.map((f) => f.fin)) : preMix;
+  const flours = s.flours.map((f, i) => ({
+    name: f.name,
+    preShare: preMix.of[i],
+    finShare: finMix.of[i],
+    pre: bF * preMix.of[i],
+    fin: fF * finMix.of[i],
+  }));
 
   const mixWater = waterTemp({
     preFlour: bF,
@@ -172,8 +208,12 @@ export function calc(kind: Kind, s: Settings): Calc {
   });
 
   const warnings: string[] = [];
-  if (Math.abs(flourSum - 100) > 0.01)
-    warnings.push(`The flour shares add up to ${+flourSum.toFixed(1)}%, so they've been scaled to 100%.`);
+  if (!split) {
+    if (off100(preMix.sum)) warnings.push(`The flour shares ${rescaled(preMix.sum)}.`);
+  } else {
+    if (off100(preMix.sum)) warnings.push(`The ${m.name.toLowerCase()} flours ${rescaled(preMix.sum)}.`);
+    if (fF > 0.5 && off100(finMix.sum)) warnings.push(`The final dough flours ${rescaled(finMix.sum)}.`);
+  }
   if (fW < 0)
     warnings.push(
       `The ${m.name.toLowerCase()} holds more water than the whole dough allows. Lower its share or raise the dough hydration.`,
@@ -196,8 +236,8 @@ export function calc(kind: Kind, s: Settings): Calc {
     water: FL * hyd,
     pre: { flour: bF, water: bW, yeast: bY, total: bF + bW + bY },
     final: { flour: fF, water: fW, salt: fS, oil: fO, yeast: fY },
-    flourSum,
-    flourShare,
+    split,
+    flours,
     mixWater,
     warnings,
   };

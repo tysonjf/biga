@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, normalise, type Settings } from '../../shared/recipe';
-import { calc, MODELS, roomFactor, timeline, waterTemp } from './dough';
+import { blend, calc, MODELS, roomFactor, timeline, waterTemp } from './dough';
 
 const biga = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.biga), ...o });
 const poolish = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.poolish), ...o });
@@ -46,6 +46,45 @@ describe('recipe maths', () => {
     const c = calc('poolish', poolish({ bp: 90, hyd: 65 }));
     expect(c.final.water).toBeLessThan(0);
     expect(c.warnings.join(' ')).toMatch(/more water than the whole dough/);
+  });
+});
+
+describe('flours', () => {
+  const two = [
+    { name: 'Bread', pct: 100, fin: 0 },
+    { name: 'Tipo 00', pct: 0, fin: 100 },
+  ];
+
+  it('uses one blend for both stages by default', () => {
+    const c = calc('biga', biga({ flours: [{ name: 'A', pct: 60, fin: 0 }, { name: 'B', pct: 40, fin: 100 }] }));
+    expect(c.flours[0].pre / c.pre.flour).toBeCloseTo(0.6, 6);
+    expect(c.flours[0].fin / c.final.flour).toBeCloseTo(0.6, 6);
+  });
+
+  it('puts each flour where it was asked to go when split by stage', () => {
+    const c = calc('biga', biga({ split: true, flours: two }));
+    expect(c.flours[0].pre).toBeCloseTo(c.pre.flour, 6);
+    expect(c.flours[0].fin).toBe(0);
+    expect(c.flours[1].pre).toBe(0);
+    expect(c.flours[1].fin).toBeCloseTo(c.final.flour, 6);
+    expect(c.warnings).toEqual([]);
+    expect(blend(c)).toEqual([75, 25]); // 75% biga
+  });
+
+  it('keeps the dough adding up', () => {
+    const c = calc('biga', biga({ split: true, flours: two }));
+    expect(c.flours.reduce((a, f) => a + f.pre + f.fin, 0)).toBeCloseTo(c.flour, 6);
+  });
+
+  it('scales a stage that does not add up to 100%', () => {
+    const c = calc('biga', biga({ split: true, flours: [{ name: 'A', pct: 50, fin: 50 }, { name: 'B', pct: 0, fin: 50 }] }));
+    expect(c.flours[0].pre).toBeCloseTo(c.pre.flour, 6);
+    expect(c.warnings.join(' ')).toMatch(/biga flours add up to 50%/);
+  });
+
+  it('blends to exactly 100% after rounding', () => {
+    const c = calc('biga', biga({ bp: 70, split: true, flours: [{ name: 'A', pct: 33.3, fin: 0 }, { name: 'B', pct: 33.3, fin: 50 }, { name: 'C', pct: 33.4, fin: 50 }] }));
+    expect(blend(c).reduce((a, v) => a + v, 0)).toBeCloseTo(100, 9);
   });
 });
 
@@ -110,6 +149,16 @@ describe('normalise', () => {
     expect(s.flours[0].pct).toBe(0);
     expect(s.start).toBe('');
     expect((s as Record<string, unknown>).evil).toBeUndefined();
+  });
+
+  it('fills the final dough share from the old single share', () => {
+    const s = normalise('biga', { split: true, flours: [{ name: 'A', pct: 70 }, { name: 'B', pct: 30, fin: 100 }] });
+    expect(s.split).toBe(true);
+    expect(s.flours).toEqual([
+      { name: 'A', pct: 70, fin: 70 },
+      { name: 'B', pct: 30, fin: 100 },
+    ]);
+    expect(normalise('biga', {}).split).toBe(false);
   });
 
   it('forces poolish hydration to 100%', () => {

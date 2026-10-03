@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { FIELDS, KIND_NAME, LIMITS, type NumKey, type Recipe, type Settings } from '../../shared/recipe';
 import {
+  blend,
   calc,
   fmtClock,
   fmtDay,
@@ -29,6 +30,9 @@ import { Sheet } from '../components/Sheet';
 import { Stepper } from '../components/Stepper';
 import { Heatmap } from '../components/Heatmap';
 import { Switch } from '../components/Switch';
+import { Fold } from '../components/Fold';
+import { IngredientsView, type Stage } from '../components/IngredientsView';
+import { useStoredFlag } from '../lib/useStoredFlag';
 import { useCreateRecipe } from './Recipes';
 
 export function EditorPage() {
@@ -76,6 +80,10 @@ function Editor({ recipe }: { recipe: Recipe }) {
   const [s, setS] = useState<Settings>(recipe.settings);
   const [reveal, setReveal] = useState(0);
   const [menu, setMenu] = useState<null | 'menu' | 'delete'>(null);
+  const [cook, setCook] = useState(false);
+  // Folded by default: the ingredient amounts come first. Remembered on this device.
+  const [tempOpen, setTempOpen] = useStoredFlag('biga-open-temp', false);
+  const [timingOpen, setTimingOpen] = useStoredFlag('biga-open-timing', false);
   const save = useSaveRecipe();
   const del = useDeleteRecipe();
   const navigate = useNavigate();
@@ -93,6 +101,8 @@ function Editor({ recipe }: { recipe: Recipe }) {
   const valid = start && !Number.isNaN(start.getTime()) ? start : null;
   const tl = useMemo(() => (valid ? timeline(kind, s, valid) : null), [kind, s, valid]);
   const m = c.model;
+  const st = useMemo(() => stages(kind, s, c, valid, tl), [kind, s, c, valid, tl]);
+  const sub = `${s.balls} × ${s.bw} g · ${num(s.hyd, 1)}% hydration · ${g0(c.dough)} dough`;
 
   const onPick = useCallback((t: number, h: number) => setS((p) => ({ ...p, temp: t, hours: h })), []);
 
@@ -119,9 +129,14 @@ function Editor({ recipe }: { recipe: Recipe }) {
       className="editor"
       left={<BackButton />}
       right={
-        <button type="button" className="nav-btn" aria-label="Recipe actions" onClick={() => setMenu('menu')}>
-          <Icon name="more" />
-        </button>
+        <>
+          <button type="button" className="nav-btn" aria-label="Show the ingredients full screen" onClick={() => setCook(true)}>
+            <Icon name="expand" />
+          </button>
+          <button type="button" className="nav-btn" aria-label="Recipe actions" onClick={() => setMenu('menu')}>
+            <Icon name="more" />
+          </button>
+        </>
       }
       large={
         <div className="title-block">
@@ -136,9 +151,7 @@ function Editor({ recipe }: { recipe: Recipe }) {
             autoComplete="off"
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
           />
-          <p className="title-sub">
-            {s.balls} × {s.bw} g · {num(s.hyd, 1)}% hydration · {g0(c.dough)} dough
-          </p>
+          <p className="title-sub">{sub}</p>
         </div>
       }
       below={
@@ -150,7 +163,8 @@ function Editor({ recipe }: { recipe: Recipe }) {
               aria-current={active === x.id ? 'true' : undefined}
               onClick={(e) => {
                 e.preventDefault();
-                document.getElementById(x.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if (x.id === 'timing') setTimingOpen(true);
+                requestAnimationFrame(() => document.getElementById(x.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
               }}
             >
               {x.label}
@@ -243,7 +257,7 @@ function Editor({ recipe }: { recipe: Recipe }) {
               {field('boost')}
               {field('fy')}
             </div>
-            <Flours s={s} setS={setS} />
+            <Flours kind={kind} s={s} setS={setS} c={c} />
           </section>
         </div>
 
@@ -252,24 +266,21 @@ function Editor({ recipe }: { recipe: Recipe }) {
           <section className="card" id="recipe" aria-labelledby="h-recipe">
             <div className="card-h">
               <h2 id="h-recipe">Recipe</h2>
-              <span className="hint">
-                {s.balls} × {s.bw} g
-              </span>
+              <button type="button" className="btn small" onClick={() => setCook(true)}>
+                <Icon name="expand" size={16} /> Full screen
+              </button>
             </div>
             <div className="totals">
               <Stat k="Dough" v={g0(c.dough)} plain />
               <Stat k="Flour" v={g0(c.flour)} plain />
               <Stat k="Water" v={g0(c.water)} plain />
             </div>
-            <RecipeLists kind={kind} s={s} c={c} start={valid} tl={tl} />
+            <RecipeLists stages={st} />
             {c.warnings.length ? <p className="warn">{c.warnings.join(' ')}</p> : null}
           </section>
 
           {/* ---------- dough temperature ---------- */}
-          <section className="card" aria-labelledby="h-temp">
-            <div className="card-h">
-              <h2 id="h-temp">Dough temperature</h2>
-            </div>
+          <Fold title="Dough temperature" summary={waterSummary(c)} open={tempOpen} onToggle={setTempOpen}>
             <WaterResult c={c} s={s} />
             <div className="grid">
               {field('ddt')}
@@ -312,11 +323,16 @@ function Editor({ recipe }: { recipe: Recipe }) {
                 <span>Below {ROOM_MIN} °C the balls will be slow. Find a warmer spot or give them longer than 2 hours.</span>
               </p>
             ) : null}
-          </section>
+          </Fold>
 
           {/* ---------- timing ---------- */}
-          <section className="card" id="timing" aria-labelledby="h-timing">
-            <h2 id="h-timing">Timing</h2>
+          <Fold
+            id="timing"
+            title="Timing"
+            summary={tl ? `Bake ${fmtDay(tl.bake)}` : 'Not started'}
+            open={timingOpen}
+            onToggle={setTimingOpen}
+          >
             <div className="startrow">
               <label>
                 <span>{m.name} mixed at</span>
@@ -370,7 +386,7 @@ function Editor({ recipe }: { recipe: Recipe }) {
             ) : s.fridge && s.fridgeH > 48 ? (
               <p className="warn">Balls are best within about 48 hours in the fridge, and only with strong flour.</p>
             ) : null}
-          </section>
+          </Fold>
 
           <section className="card notes">
             <h2>How the numbers work</h2>
@@ -384,6 +400,8 @@ function Editor({ recipe }: { recipe: Recipe }) {
           </section>
         </div>
       </div>
+
+      <IngredientsView open={cook} onClose={() => setCook(false)} title={name || 'Untitled'} sub={sub} stages={st} />
 
       <Sheet open={menu !== null} onClose={() => setMenu(null)} title={menu === 'delete' ? `Delete “${name || 'Untitled'}”?` : undefined} label="Recipe actions">
         {menu === 'delete' ? (
@@ -442,51 +460,83 @@ function Li({ n, sub, g, sum }: { n: string; sub?: string; g: string; sum?: bool
   );
 }
 
-function RecipeLists({ kind, s, c, start, tl }: { kind: Recipe['kind']; s: Settings; c: Calc; start: Date | null; tl: ReturnType<typeof timeline> | null }) {
+/** The ingredient lists, shared by the Recipe card and the full-screen view. */
+function stages(kind: Recipe['kind'], s: Settings, c: Calc, start: Date | null, tl: ReturnType<typeof timeline> | null): Stage[] {
   const m = c.model;
-  const flourLis = (amt: number) =>
-    s.flours.map((f, i) => (
-      <Li key={i} n={f.name || 'Flour'} sub={s.flours.length > 1 ? `${num(f.pct, 1)}% of the flour` : undefined} g={g0(amt * c.flourShare(f.pct))} />
-    ));
+  const pre = m.name.toLowerCase();
+  const flourItems = (stage: 'pre' | 'fin') =>
+    c.flours.flatMap((f) => {
+      const grams = f[stage];
+      if (grams < 0.5) return [];
+      const pct = num((stage === 'pre' ? f.preShare : f.finShare) * 100, 1);
+      const of = !c.split ? 'the flour' : stage === 'pre' ? `the ${pre} flour` : 'the final dough flour';
+      return [{ n: f.name || 'Flour', sub: c.flours.length > 1 ? `${pct}% of ${of}` : undefined, g: g0(grams) }];
+    });
   const w = c.mixWater;
   const waterSub = w ? (w.ice ? `${Math.round(w.ice)} g of it as ice` : `at ${Math.round(w.water)} °C`) : undefined;
+  return [
+    {
+      key: 'pre',
+      title: m.name,
+      when: start ? `Mix ${fmtDay(start)}` : undefined,
+      items: [
+        ...flourItems('pre'),
+        { n: 'Water', sub: `${kind === 'poolish' ? 100 : num(s.bh, 0)}% of ${pre} flour`, g: g0(c.pre.water) },
+        { n: 'Instant dry yeast', short: 'Yeast', tag: 'IDY', sub: `${(c.preIdy * 100).toFixed(2)}% · ${c.hours} h at ${c.temp} °C`, g: g1(c.pre.yeast) },
+        { n: `Total ${pre}`, g: g0(c.pre.total), sum: true },
+      ],
+    },
+    {
+      key: 'fin',
+      title: 'Final dough',
+      when: tl ? `Mix ${fmtDay(tl.ready)}` : undefined,
+      items: [
+        { n: m.name, sub: kind === 'biga' ? 'all of it, torn into pieces' : 'all of it', tag: 'all of it', g: g0(c.pre.total) },
+        ...(c.final.flour > 0.5 ? flourItems('fin') : []),
+        { n: 'Water', sub: waterSub, tag: waterSub, g: g0(Math.max(c.final.water, 0)) },
+        ...(c.final.oil > 0 ? [{ n: 'Olive oil', sub: `${num(s.oil, 1)}% of flour`, g: g0(c.final.oil) }] : []),
+        { n: 'Salt', sub: `${num(s.salt, 1)}% of flour`, g: g0(c.final.salt) },
+        ...(c.final.yeast > 0
+          ? [
+              {
+                n: 'Instant dry yeast',
+                short: 'Yeast',
+                tag: 'IDY',
+                sub: c.finalIdy < s.fy ? `${num(c.finalIdy, 3)}% · cut for a ${s.room} °C room` : `${num(s.fy, 2)}% of flour`,
+                g: g1(c.final.yeast),
+              },
+            ]
+          : []),
+        { n: 'Total dough', sub: `${s.balls} × ${s.bw} g + ${num(s.waste, 1)}% waste`, g: g0(c.dough), sum: true },
+      ],
+    },
+  ];
+}
+
+function RecipeLists({ stages }: { stages: Stage[] }) {
   return (
     <>
-      <div className="stage">
-        <div className="stage-h">
-          <h3>{m.name}</h3>
-          {start ? <span className="when">Mix {fmtDay(start)}</span> : null}
+      {stages.map((st) => (
+        <div className="stage" key={st.key}>
+          <div className="stage-h">
+            <h3>{st.title}</h3>
+            {st.when ? <span className="when">{st.when}</span> : null}
+          </div>
+          <ul className="ing">
+            {st.items.map((it, i) => (
+              <Li key={i} n={it.n} sub={it.sub} g={it.g} sum={it.sum} />
+            ))}
+          </ul>
         </div>
-        <ul className="ing">
-          {flourLis(c.pre.flour)}
-          <Li n="Water" sub={`${kind === 'poolish' ? 100 : num(s.bh, 0)}% of ${m.name.toLowerCase()} flour`} g={g0(c.pre.water)} />
-          <Li n="Instant dry yeast" sub={`${(c.preIdy * 100).toFixed(2)}% · ${c.hours} h at ${c.temp} °C`} g={g1(c.pre.yeast)} />
-          <Li n={`Total ${m.name.toLowerCase()}`} g={g0(c.pre.total)} sum />
-        </ul>
-      </div>
-      <div className="stage">
-        <div className="stage-h">
-          <h3>Final dough</h3>
-          {tl ? <span className="when">Mix {fmtDay(tl.ready)}</span> : null}
-        </div>
-        <ul className="ing">
-          <Li n={m.name} sub={kind === 'biga' ? 'all of it, torn into pieces' : 'all of it'} g={g0(c.pre.total)} />
-          {c.final.flour > 0.5 ? flourLis(c.final.flour) : null}
-          <Li n="Water" sub={waterSub} g={g0(Math.max(c.final.water, 0))} />
-          {c.final.oil > 0 ? <Li n="Olive oil" sub={`${num(s.oil, 1)}% of flour`} g={g0(c.final.oil)} /> : null}
-          <Li n="Salt" sub={`${num(s.salt, 1)}% of flour`} g={g0(c.final.salt)} />
-          {c.final.yeast > 0 ? (
-            <Li
-              n="Instant dry yeast"
-              sub={c.finalIdy < s.fy ? `${num(c.finalIdy, 3)}% · cut for a ${s.room} °C room` : `${num(s.fy, 2)}% of flour`}
-              g={g1(c.final.yeast)}
-            />
-          ) : null}
-          <Li n="Total dough" sub={`${s.balls} × ${s.bw} g + ${num(s.waste, 1)}% waste`} g={g0(c.dough)} sum />
-        </ul>
-      </div>
+      ))}
     </>
   );
+}
+
+function waterSummary(c: Calc) {
+  const w = c.mixWater;
+  if (!w) return undefined;
+  return w.ice ? `Water ${Math.round(w.ice)} g ice` : `Water ${Math.round(w.water)} °C`;
 }
 
 function WaterResult({ c, s }: { c: Calc; s: Settings }) {
@@ -520,18 +570,52 @@ function WaterResult({ c, s }: { c: Calc; s: Settings }) {
   );
 }
 
-function Flours({ s, setS }: { s: Settings; setS: React.Dispatch<React.SetStateAction<Settings>> }) {
-  const total = s.flours.reduce((a, f) => a + (+f.pct || 0), 0);
+function Flours({
+  kind,
+  s,
+  setS,
+  c,
+}: {
+  kind: Recipe['kind'];
+  s: Settings;
+  setS: React.Dispatch<React.SetStateAction<Settings>>;
+  c: Calc;
+}) {
+  const pre = c.model.name.toLowerCase();
+  const split = c.split;
+  const sum = (k: 'pct' | 'fin') => s.flours.reduce((a, f) => a + (+f[k] || 0), 0);
+  const total = (k: 'pct' | 'fin', label: string) => (
+    <span className={'fsum' + (Math.abs(sum(k) - 100) > 0.01 ? ' bad' : '')}>
+      {label} {num(sum(k), 1)}%
+    </span>
+  );
   const upd = (i: number, patch: Partial<Settings['flours'][number]>) =>
     setS((p) => ({ ...p, flours: p.flours.map((f, j) => (j === i ? { ...f, ...patch } : f)) }));
+  // Switching on starts both stages on the current blend. Switching off keeps the overall blend.
+  const toggleSplit = (on: boolean) =>
+    setS((p) => {
+      if (on) return { ...p, split: true, flours: p.flours.map((f) => ({ ...f, fin: f.pct })) };
+      const b = blend(calc(kind, p));
+      return { ...p, split: false, flours: p.flours.map((f, i) => ({ ...f, pct: b[i], fin: b[i] })) };
+    });
+  const overall = split ? blend(c) : null;
+  const pctStepper = { unit: '%', step: 5, min: 0, max: 100 };
   return (
     <>
       <div className="sub-h">
-        Flours <span className={'fsum' + (Math.abs(total - 100) > 0.01 ? ' bad' : '')}>total {num(total, 1)}%</span>
+        Flours
+        {split ? (
+          <>
+            {total('pct', c.model.name)}
+            {total('fin', 'final')}
+          </>
+        ) : (
+          total('pct', 'total')
+        )}
       </div>
-      <div className="flours">
+      <div className={'flours' + (split ? ' split' : '')}>
         {s.flours.map((f, i) => (
-          <div className="frow" key={i}>
+          <div className={'frow' + (split ? ' split' : '')} key={i}>
             <input
               className="tin"
               type="text"
@@ -542,7 +626,14 @@ function Flours({ s, setS }: { s: Settings; setS: React.Dispatch<React.SetStateA
               enterKeyHint="done"
               onChange={(e) => upd(i, { name: e.target.value })}
             />
-            <Stepper label={`Flour ${i + 1} share`} hideLabel unit="%" step={5} min={0} max={100} value={f.pct} onChange={(v) => upd(i, { pct: v })} />
+            {split ? (
+              <>
+                <Stepper label={`In the ${pre}`} {...pctStepper} value={f.pct} onChange={(v) => upd(i, { pct: v })} />
+                <Stepper label="In the final dough" {...pctStepper} value={f.fin} onChange={(v) => upd(i, { fin: v })} />
+              </>
+            ) : (
+              <Stepper label={`Flour ${i + 1} share`} hideLabel {...pctStepper} value={f.pct} onChange={(v) => upd(i, { pct: v, fin: v })} />
+            )}
             <button
               className="xbtn"
               type="button"
@@ -555,16 +646,29 @@ function Flours({ s, setS }: { s: Settings; setS: React.Dispatch<React.SetStateA
           </div>
         ))}
       </div>
+      {overall ? (
+        <p className="note">
+          Overall: {s.flours.map((f, i) => `${f.name || 'Flour'} ${num(overall[i], 1)}%`).join(' · ')}
+        </p>
+      ) : null}
+      {s.flours.length > 1 ? (
+        <Switch
+          checked={split}
+          onChange={toggleSplit}
+          label="Set flours per stage"
+          sub={`Choose how much of each flour goes into the ${pre} and how much into the final dough.`}
+        />
+      ) : null}
       {s.flours.length < LIMITS.flours ? (
         <div>
           <button
             className="btn small"
             type="button"
             onClick={() =>
-              setS((p) => ({
-                ...p,
-                flours: [...p.flours, { name: `Flour ${p.flours.length + 1}`, pct: Math.max(0, 100 - p.flours.reduce((a, f) => a + (+f.pct || 0), 0)) }],
-              }))
+              setS((p) => {
+                const left = (k: 'pct' | 'fin') => Math.max(0, 100 - p.flours.reduce((a, f) => a + (+f[k] || 0), 0));
+                return { ...p, flours: [...p.flours, { name: `Flour ${p.flours.length + 1}`, pct: left('pct'), fin: left('fin') }] };
+              })
             }
           >
             <Icon name="plus" size={16} /> Add flour

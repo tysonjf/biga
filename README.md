@@ -72,6 +72,9 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
 - **Poolish yeast:** about 0.1% IDY at 18 °C for 16 h, with the same 8 °C doubling and a steeper time curve (×(16/h)^1.5).
   - Wet preferments ferment faster, so this is roughly a third of a biga's dose.
   - It's fitted to published schedules (Hamelman, Italian tables, Weekend Bakery, pizzamaking.com), which disagree with each other by ±60%. Trust the bubbles over the clock.
+- **Flours:** by default each flour goes into the preferment and the final dough in the same proportion.
+  - Turn on **Set flours per stage** to give each flour its own share of each stage, for example all the bread flour in the biga and all the Tipo 00 in the final dough.
+  - The Dough card then shows the overall blend that results.
 - **Dough temperature:** the ball timings assume the dough comes off the mixer at 24–26 °C and the balls proof in an 18–24 °C room.
   - The water temperature comes from a mass-weighted energy balance across preferment, flour, water and mixer heat.
   - The classic "×4" rule of thumb gets it wrong when most of the water is already in a stiff biga.

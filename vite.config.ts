@@ -4,7 +4,7 @@ import { cloudflare } from '@cloudflare/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 import pkg from './package.json' with { type: 'json' };
 
-const BG_LIGHT = '#f6f2ec';
+const BG_DARK = '#14110f';
 
 export default defineConfig({
   define: {
@@ -28,8 +28,8 @@ export default defineConfig({
         lang: 'en',
         display: 'standalone',
         orientation: 'portrait',
-        background_color: BG_LIGHT,
-        theme_color: BG_LIGHT,
+        background_color: BG_DARK,
+        theme_color: BG_DARK,
         categories: ['food', 'lifestyle', 'utilities'],
         icons: [
           { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },
