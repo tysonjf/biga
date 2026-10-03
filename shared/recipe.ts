@@ -41,6 +41,11 @@ export type Settings = {
   fridgeRest: number; // room rest before the fridge, min
   fridgeH: number; // hours in the fridge
   temper: number; // out of the fridge before baking, min
+  /**
+   * Recipes and the playground: when you plan to mix the preferment, local "YYYY-MM-DDTHH:mm".
+   * '' = now. Ignored once that schedule is over, so it never goes stale. Bakes keep their own start.
+   */
+  plan: string;
 };
 
 export type NumKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
@@ -96,6 +101,7 @@ const COMMON = {
   fridgeRest: 60,
   fridgeH: 16,
   temper: 120,
+  plan: '',
 } satisfies Partial<Settings>;
 
 export const DEFAULTS: Record<Kind, Settings> = {
@@ -116,6 +122,9 @@ export const LIMITS = {
   bodyBytes: 64_000,
 };
 
+/** A local date and time, "YYYY-MM-DDTHH:mm". */
+export const START_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const round = (v: number, dec: number) => Number(v.toFixed(dec));
 const share = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? round(clamp(v, 0, 100), 1) : null);
@@ -135,6 +144,7 @@ export function normalise(kind: Kind, raw: unknown): Settings {
   else out.bh = clamp(out.bh, 40, 65);
   if (typeof src.fridge === 'boolean') out.fridge = src.fridge;
   if (typeof src.split === 'boolean') out.split = src.split;
+  if (typeof src.plan === 'string' && START_RE.test(src.plan)) out.plan = src.plan;
   if (Array.isArray(src.flours)) {
     const flours = src.flours
       .slice(0, LIMITS.flours)
@@ -182,7 +192,6 @@ export type Play = { settings: Settings; updatedAt: number };
 export type Playground = Record<Kind, Play | null>;
 
 export const ID_RE = /^[A-Za-z0-9_-]{8,40}$/;
-export const START_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 export const cleanStart = (v: unknown) => (typeof v === 'string' && START_RE.test(v) ? v : '');
 /** Notes as stored: a string within the limit. Anything else is `null` ("leave the notes as they are"). */

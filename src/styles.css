@@ -521,6 +521,29 @@ table.heat { border-collapse: separate; border-spacing: 3px; font-size: 12.5px; 
 .legend .sw span { width: 20px; height: 10px; border-radius: 3px; }
 .legend-note { flex-basis: 100%; }
 
+/* ---------- start row: now, or a planned time ---------- */
+.start-plan { display: grid; gap: 6px; }
+.start-plan-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.start-plan-l { font-size: 13px; color: var(--muted); font-weight: 500; padding: 0 2px; }
+.plan-pill {
+  position: relative; height: 40px; padding: 0 13px; border: 0; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel-2); color: var(--ink-2); font-weight: 600; font-size: 16px; font-variant-numeric: tabular-nums;
+  transition: background-color 0.15s, color 0.15s;
+}
+button.plan-pill[aria-pressed='true'], .plan-pill.on { background: var(--accent); color: var(--accent-ink); }
+.plan-pill.time { width: 7.6em; min-width: 0; padding: 0 10px; justify-content: center; text-align: center; cursor: pointer; }
+.plan-pill.time::-webkit-date-and-time-value { text-align: center; }
+.plan-pill.time::-webkit-calendar-picker-indicator { display: none; }
+.plan-pill.time:focus-visible { outline-offset: 2px; }
+/* The day reads "Today" / "Tomorrow"; the real date input sits invisibly on top to open the picker. */
+.plan-pill.day { cursor: pointer; }
+.plan-pill.day.on { background: var(--accent-soft); color: var(--accent); }
+.plan-pill.day input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.plan-pill:active { transform: scale(0.97); }
+.start-plan-out { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.start-plan-out b { color: var(--ink); font-weight: 650; }
+
 /* ---------- stats ---------- */
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 @media (min-width: 560px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

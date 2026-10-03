@@ -376,6 +376,42 @@ export function parseStart(v: string): Date | null {
 
 export const fmtDate = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
+/* ---------- planned start ---------- */
+
+/** Picking a time this long ago still means today: you've only just mixed it. */
+export const PLAN_GRACE_MIN = 60;
+
+/**
+ * The next time the clock reads `hhmm` ("17:00"): today, or tomorrow if that's already more than
+ * an hour gone. At 7 pm, 5 pm means tomorrow; 6:30 pm means half an hour ago.
+ */
+export function nextAt(hhmm: string, now: Date): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(now);
+  d.setHours(h, m, 0, 0);
+  if (d.getTime() < now.getTime() - PLAN_GRACE_MIN * 60_000) d.setDate(d.getDate() + 1);
+  // setHours on a day the clocks change can land an hour out; ask for the wall time again.
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+/**
+ * Where a recipe's schedule starts: its planned mix time while that schedule is still going (up to a
+ * few hours after the dough is ready to bake), otherwise now, to the nearest 5 minutes.
+ */
+export function planStart(kind: Kind, s: Settings, now: Date): { start: Date; planned: boolean } {
+  const plan = parseStart(s.plan);
+  if (plan && timeline(kind, s, plan).bake.getTime() + BAKE_GRACE_MIN * 60_000 > now.getTime()) return { start: plan, planned: true };
+  return { start: new Date(Math.round(now.getTime() / 300_000) * 300_000), planned: false };
+}
+
+/** "Today", "Tomorrow", "Yesterday" or the date. */
+export function relDay(d: Date, now: Date): string {
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(now)) / 86_400_000);
+  return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : fmtDate(d);
+}
+
 /* ---------- clock changes ---------- */
 
 export type ClockChange = {

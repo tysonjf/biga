@@ -18,11 +18,15 @@ import {
   g1,
   MIXERS,
   nearest,
+  nextAt,
   num,
+  planStart,
   rebalance,
+  relDay,
   ROOM_MAX,
   ROOM_MIN,
   timeline,
+  toLocalInput,
   WATER_MAX,
   type BakeStatus,
   type Calc,
@@ -53,16 +57,19 @@ export function useDough(kind: Kind, s: Settings, setS: SetS, start: Date | null
 }
 export type Dough = ReturnType<typeof useDough>;
 
-/** "If you start now": the current time to the nearest 5 minutes, kept up to date. */
-export function useLiveStart() {
+/**
+ * Where a recipe's (or the playground's) schedule starts: the planned mix time while that schedule is
+ * still going, otherwise now, kept up to date.
+ */
+export function usePlanStart(kind: Kind, s: Settings) {
   const now = useNow();
-  return useMemo(() => new Date(Math.round(now.getTime() / 300_000) * 300_000), [now]);
+  return useMemo(() => planStart(kind, s, now), [kind, s, now]);
 }
 
 /** A yeast percentage: three decimals for the tiny doses of long, wet ferments (0.075%, not 0.07%). */
 const idyPct = (fraction: number) => {
   const v = fraction * 100;
-  return `${num(v, v < 0.1 ? 3 : 2)}%`;
+  return `${v.toFixed(v < 0.1 ? 3 : 2)}%`;
 };
 
 export const doughSummary = (s: Settings, c: Calc) => `${s.balls} × ${s.bw} g · ${num(s.hyd, 1)}% hydration · ${g0(c.dough)} dough`;
@@ -75,7 +82,8 @@ function Field({ d, k, ...extra }: { d: Dough; k: NumKey } & Partial<StepperProp
 
 /* ---------- yeast ---------- */
 
-export function YeastCard({ d, order }: { d: Dough; order?: number }) {
+/** `planner`: show the start row (recipes and the playground; a bake has its own start time). */
+export function YeastCard({ d, order, planner }: { d: Dough; order?: number; planner?: boolean }) {
   const { s, set, setS, c, tl, start, live } = d;
   const m = c.model;
   const [reveal, setReveal] = useState(0);
@@ -97,6 +105,7 @@ export function YeastCard({ d, order }: { d: Dough; order?: number }) {
           <h2 id="h-yeast">{m.name} yeast</h2>
           <span className="hint">Tap a cell to pick temperature × time.</span>
         </div>
+        {planner ? <StartRow d={d} /> : null}
         <Heatmap model={m} temp={c.temp} hours={c.hours} onPick={onPick} start={start} live={live} after={afterReady(s)} reveal={reveal} />
         <div className="grid">
           <Stepper
@@ -141,6 +150,62 @@ export function YeastCard({ d, order }: { d: Dough; order?: number }) {
         </div>
       </section>
     </Locked.Provider>
+  );
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * When you'll mix the preferment: now (kept up to date), or a time you pick, which means the next
+ * time the clock reads it. The day can be changed too. Shows when everything works out.
+ */
+function StartRow({ d }: { d: Dough }) {
+  const { set, start, tl, live, c } = d;
+  const now = useNow();
+  if (!start) return null;
+  const time = `${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
+  const date = toLocalInput(start).slice(0, 10);
+  return (
+    <div className="start-plan">
+      <span className="start-plan-l" id="start-plan-l">
+        Mix the {c.model.name.toLowerCase()}
+      </span>
+      <div className="start-plan-ctl" role="group" aria-labelledby="start-plan-l">
+        <button type="button" className="plan-pill" aria-pressed={live} onClick={() => set('plan', '')}>
+          Now
+        </button>
+        <input
+          type="time"
+          className={'plan-pill time' + (live ? '' : ' on')}
+          aria-label="Start time"
+          value={time}
+          onChange={(e) => e.target.value && set('plan', toLocalInput(nextAt(e.target.value, now)))}
+        />
+        {live ? null : (
+          <label className="plan-pill day on">
+            <span aria-hidden="true">{relDay(start, now)}</span>
+            <input
+              type="date"
+              aria-label="Start date"
+              value={date}
+              onClick={(e) => {
+                try {
+                  e.currentTarget.showPicker?.();
+                } catch {
+                  /* not supported: the tap opens it */
+                }
+              }}
+              onChange={(e) => set('plan', e.target.value ? `${e.target.value}T${time}` : toLocalInput(nextAt(time, now)))}
+            />
+          </label>
+        )}
+      </div>
+      {tl ? (
+        <p className="start-plan-out">
+          {c.model.name} ready <b>{fmtDay(tl.ready)}</b> · bake <b>{fmtDay(tl.bake)}</b>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -309,7 +374,7 @@ export function TimingFold({
       <TimingFields d={d} />
       {tl ? (
         <>
-          <div className="sub-h">If you start now</div>
+          <div className="sub-h">{d.live ? 'If you start now' : `Starting ${fmtDay(tl.steps[0].at)}`}</div>
           <TimelineList tl={tl} />
           <ClockNote tl={tl} />
         </>

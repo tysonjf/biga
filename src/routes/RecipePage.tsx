@@ -9,7 +9,7 @@ import { useDebouncedEffect } from '../lib/useDebounced';
 import { useNow } from '../lib/useNow';
 import { useStoredFlag } from '../lib/useStoredFlag';
 import { BakeRow } from '../components/BakeRow';
-import { doughSummary, DoughCard, HowCard, JumpNav, RecipeCard, TempFold, TimingFold, useDough, useLiveStart, YeastCard } from '../components/Dough';
+import { doughSummary, DoughCard, HowCard, JumpNav, RecipeCard, TempFold, TimingFold, useDough, usePlanStart, YeastCard } from '../components/Dough';
 import { Icon } from '../components/Icon';
 import { IngredientsView } from '../components/IngredientsView';
 import { useLockButton } from '../components/LockButton';
@@ -81,8 +81,8 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
   const bakes = useMemo(() => (allBakes ?? []).filter((b) => b.recipeId === recipe.id).sort(byStart), [allBakes, recipe.id]);
 
   // A recipe has no clock times of its own: its schedule is shown as if you started now.
-  const live = useLiveStart();
-  const d = useDough(kind, s, setS, live, true);
+  const { start, planned } = usePlanStart(kind, s);
+  const d = useDough(kind, s, setS, start, !planned);
   const sub = doughSummary(s, d.c);
 
   // Autosave: local state is the source of truth while editing; the cache is updated optimistically.
@@ -95,7 +95,7 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
   const bake = () => {
     autosave.flush();
     setMenu(null);
-    startBake(recipe, s);
+    startBake(recipe, s, planned ? s.plan : undefined);
   };
 
   const lock = useLockButton(locked, (next) => {
@@ -160,7 +160,7 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
       >
         <div className="cols">
           <div className="col">
-            <YeastCard d={d} order={1} />
+            <YeastCard d={d} order={1} planner />
             <DoughCard d={d} order={2} />
             {/* Notes aren't settings: they stay editable while the recipe is locked. */}
             <NotesCard

@@ -5,7 +5,7 @@ import { usePlayground, useSavePlay } from '../lib/query';
 import { toast } from '../lib/toast';
 import { useDebouncedEffect } from '../lib/useDebounced';
 import { useStoredFlag } from '../lib/useStoredFlag';
-import { doughSummary, DoughCard, HowCard, JumpNav, RecipeCard, TempFold, TimingFold, useDough, useLiveStart, YeastCard } from '../components/Dough';
+import { doughSummary, DoughCard, HowCard, JumpNav, RecipeCard, TempFold, TimingFold, useDough, usePlanStart, YeastCard } from '../components/Dough';
 import { Icon } from '../components/Icon';
 import { IngredientsView } from '../components/IngredientsView';
 import { Page } from '../components/Page';
@@ -70,8 +70,8 @@ function Playground({ kind, setKind, initial }: { kind: Kind; setKind: (k: Kind)
   const [timingOpen, setTimingOpen] = useStoredFlag('biga-open-timing', false);
   const save = useSavePlay();
   const create = useCreateRecipe();
-  const live = useLiveStart();
-  const d = useDough(kind, s, setS, live, true);
+  const { start, planned } = usePlanStart(kind, s);
+  const d = useDough(kind, s, setS, start, !planned);
   const sub = doughSummary(s, d.c);
 
   const autosave = useDebouncedEffect(s, 400, (settings) => save.mutate({ kind, settings, updatedAt: Date.now() }));
@@ -125,7 +125,7 @@ function Playground({ kind, setKind, initial }: { kind: Kind; setKind: (k: Kind)
     >
       <div className="cols">
         <div className="col">
-          <YeastCard d={d} />
+          <YeastCard d={d} planner />
           <DoughCard d={d} />
         </div>
         <div className="col sticky">

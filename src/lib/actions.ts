@@ -34,19 +34,20 @@ export function useCreateRecipe() {
   };
 }
 
-/** Starts a bake of a recipe, mixed now, and opens it ready to tweak. */
+/** Starts a bake of a recipe, mixed at `start` (default now), and opens it ready to tweak. */
 export function useStartBake() {
   const save = useSaveBake();
   const navigate = useNavigate();
-  return (recipe: Pick<Recipe, 'id' | 'kind'>, settings: Settings) => {
+  return (recipe: Pick<Recipe, 'id' | 'kind'>, settings: Settings, start?: string) => {
     const now = Date.now();
     const b: Bake = {
       id: newId(),
       recipeId: recipe.id,
       kind: recipe.kind,
       name: '',
-      settings: normalise(recipe.kind, settings),
-      start: toLocalInput(roundedNow()),
+      // A bake has its own start time, not the recipe's plan.
+      settings: normalise(recipe.kind, { ...settings, plan: '' }),
+      start: start || toLocalInput(roundedNow()),
       notes: '',
       createdAt: now,
       updatedAt: now,

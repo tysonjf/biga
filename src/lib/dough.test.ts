@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, normalise, type Settings } from '../../shared/recipe';
-import { bakeStatus, balance, blend, calc, clockChange, describeClockChange, MODELS, rebalance, roomFactor, timeline, waterTemp } from './dough';
+import {
+  bakeStatus,
+  balance,
+  blend,
+  calc,
+  clockChange,
+  describeClockChange,
+  MODELS,
+  nextAt,
+  planStart,
+  rebalance,
+  relDay,
+  roomFactor,
+  timeline,
+  waterTemp,
+} from './dough';
 
 const biga = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.biga), ...o });
 const poolish = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.poolish), ...o });
@@ -244,7 +259,49 @@ describe('bake status', () => {
   });
 });
 
+describe('planned start', () => {
+  const now = new Date('2026-10-10T19:00');
+  const at = (d: Date) => [d.getDate(), d.getHours(), d.getMinutes()];
+
+  it('takes a time as the next time the clock reads it', () => {
+    expect(at(nextAt('21:30', now))).toEqual([10, 21, 30]); // later today
+    expect(at(nextAt('17:00', now))).toEqual([11, 17, 0]); // already gone: tomorrow
+    expect(at(nextAt('06:00', now))).toEqual([11, 6, 0]); // tomorrow morning
+  });
+
+  it('reads a time from the last hour as just mixed', () => {
+    expect(at(nextAt('18:30', now))).toEqual([10, 18, 30]);
+    expect(at(nextAt('17:59', now))).toEqual([11, 17, 59]);
+  });
+
+  it('lands on the wall time across a clock change', () => {
+    // Clocks go forward overnight: 8:00 am Sunday is still 8:00 am.
+    expect(at(nextAt('08:00', new Date('2026-10-03T19:30')))).toEqual([4, 8, 0]);
+  });
+
+  it('uses the plan while its schedule is going, then goes back to now', () => {
+    const s = biga({ hours: 12, plan: '2026-10-10T17:00' }); // ready to bake 8:00 am
+    expect(planStart('biga', s, new Date('2026-10-10T12:00'))).toMatchObject({ planned: true });
+    expect(planStart('biga', s, new Date('2026-10-11T07:00'))).toMatchObject({ planned: true });
+    const later = planStart('biga', s, new Date('2026-10-12T19:02'));
+    expect(later.planned).toBe(false);
+    expect(at(later.start)).toEqual([12, 19, 0]); // now, to the nearest 5 minutes
+    expect(planStart('biga', biga(), now)).toMatchObject({ planned: false });
+  });
+
+  it('names the day relative to now', () => {
+    expect(relDay(new Date('2026-10-10T23:00'), now)).toBe('Today');
+    expect(relDay(new Date('2026-10-11T05:00'), now)).toBe('Tomorrow');
+    expect(relDay(new Date('2026-10-09T23:00'), now)).toBe('Yesterday');
+  });
+});
+
 describe('normalise', () => {
+  it('keeps a valid planned start and drops junk', () => {
+    expect(normalise('biga', { plan: '2026-10-10T17:00' }).plan).toBe('2026-10-10T17:00');
+    expect(normalise('biga', { plan: 'tomorrow' }).plan).toBe('');
+  });
+
   it('clamps junk and fills defaults', () => {
     const s = normalise('biga', { hyd: 999, balls: -3, flours: [{ name: 'x'.repeat(99), pct: 'a' }, { name: 'B', pct: 100 }], start: '2026-10-03T17:00', evil: 1 });
     expect(s.hyd).toBe(90);
