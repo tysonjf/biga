@@ -4,13 +4,13 @@ An installable app (PWA) for planning biga and poolish pizza doughs to the hour.
 
 ## How it's organised
 
-- **Recipes** are templates: the amounts, ferment, timings and a written method. They have no clock times, so a recipe reads the same whichever day you open it. Its schedule is shown as "if you start now".
-- **Bakes** are each time you make a recipe. **Start a bake** copies the recipe's settings, so you can tweak that bake without changing the recipe. A bake also records when the preferment was mixed and has its own notes. The bake page shows where you're up to and what's next, live. Bakes still on the go are listed on the home screen.
+- **Recipes** are what you use day to day: the amounts, ferment, timings and notes (the method). They have no clock times, so a recipe reads the same whichever day you open it. Its schedule is shown as "if you start now".
+- **Bakes** are optional, for following one session on the clock. **Start a bake** (at the bottom of a recipe, or in its ⋯ menu) copies the recipe's settings, so you can tweak that bake without changing the recipe. A bake also records when the preferment was mixed and has its own notes. The bake page shows where you're up to and what's next, live. Bakes still on the go are listed on the home screen.
   - **Bake again** starts a new bake with this bake's settings.
   - **Save these settings to the recipe** copies a bake's tweaks back into the recipe.
-- **Recipes and bakes open locked**, so a stray tap while scrolling can't change anything. Tap **Edit** to unlock and **Done** to lock again. A bake's notes stay editable while it's locked.
+- **Recipes and bakes open locked**, so a stray tap while scrolling can't change the amounts. Tap **Edit** to unlock and **Done** to lock again. Two things stay usable while locked, because they aren't the recipe's ratios: the yeast chart (ferment temperature × time, which is scheduling) and the notes.
 - **The playground** is a free calculator, one for biga and one for poolish. It saves as you go and never changes your recipes. **Save as recipe** turns it into a recipe.
-- **Notes** (a recipe's method, a bake's notes) are rich text: headings, numbered steps, bullets and checklists. They're stored as Markdown. The editor loads only on recipe and bake pages.
+- **Notes** (a recipe's notes, a bake's notes) are rich text: headings, numbered steps, bullets and checklists. They're stored as Markdown. The editor loads only on recipe and bake pages.
 
 - **Frontend:** React SPA (Vite, TanStack Router + Query). Optimistic updates, autosave, works offline.
 - **Backend:** one Cloudflare Worker (Hono) serving the static app and `/api/*`.

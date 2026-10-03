@@ -47,7 +47,7 @@ export function NotesCard({ id, title, hint, value, onChange, editable, placehol
       {blank && editable && template ? (
         <div>
           <button type="button" className="btn small" onClick={() => onChange(template)}>
-            Start from a template
+            Start from a method template
           </button>
         </div>
       ) : null}

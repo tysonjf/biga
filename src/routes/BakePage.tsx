@@ -57,7 +57,7 @@ export function BakePage() {
 }
 
 const SECTIONS = [
-  { id: 'schedule', label: 'Schedule' },
+  { id: 'timing', label: 'Timing' },
   { id: 'recipe', label: 'Recipe' },
   { id: 'notes', label: 'Notes' },
   { id: 'yeast', label: 'Yeast' },
@@ -187,8 +187,8 @@ function BakeEditor({ bake, recipe }: { bake: Bake; recipe: Recipe | undefined }
             <ScheduleCard d={d} status={status} now={now} start={start} setStart={setStart} locked={locked} order={1} />
             <NotesCard
               id="notes"
-              title="Notes"
-              hint="How it went, what to change"
+              title="Bake notes"
+              hint="How this one went"
               value={notes}
               onChange={setNotes}
               editable
@@ -197,8 +197,8 @@ function BakeEditor({ bake, recipe }: { bake: Bake; recipe: Recipe | undefined }
               order={3}
             />
             {recipe?.notes?.trim() ? (
-              <Fold id="method" title="Method" summary={`From ${recipe.name}`} open={methodOpen} onToggle={setMethodOpen} order={4}>
-                <NotesText value={recipe.notes} onChange={() => {}} editable={false} placeholder="" label="Method" />
+              <Fold id="recipe-notes" title="Recipe notes" summary={`From ${recipe.name}`} open={methodOpen} onToggle={setMethodOpen} order={4}>
+                <NotesText value={recipe.notes} onChange={() => {}} editable={false} placeholder="" label="Recipe notes" />
               </Fold>
             ) : null}
             <YeastCard d={d} order={5} />
@@ -296,8 +296,8 @@ function ScheduleCard({
   const at = parseStart(start);
   const pre = d.c.model.name.toLowerCase();
   return (
-    <section className="card" id="schedule" aria-labelledby="h-schedule" style={mobileOrder(order)}>
-      <h2 id="h-schedule">Schedule</h2>
+    <section className="card" id="timing" aria-labelledby="h-timing" style={mobileOrder(order)}>
+      <h2 id="h-timing">Timing</h2>
       {status && d.tl ? <StatusPanel status={status} tl={d.tl} now={now} /> : null}
       <div className="startrow">
         <label>

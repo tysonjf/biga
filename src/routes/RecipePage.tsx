@@ -53,11 +53,10 @@ export function BackHome() {
 }
 
 const SECTIONS = [
-  { id: 'bakes', label: 'Bakes' },
   { id: 'yeast', label: 'Yeast' },
   { id: 'dough', label: 'Dough' },
   { id: 'recipe', label: 'Recipe' },
-  { id: 'method', label: 'Method' },
+  { id: 'notes', label: 'Notes' },
   { id: 'timing', label: 'Timing' },
 ] as const;
 
@@ -92,6 +91,12 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
   const autosave = useDebouncedEffect(draft, 400, (x) =>
     save.mutate({ ...recipe, name: x.name.trim().slice(0, LIMITS.name) || 'Untitled', settings: x.s, notes: x.notes, updatedAt: Date.now() }),
   );
+
+  const bake = () => {
+    autosave.flush();
+    setMenu(null);
+    startBake(recipe, s);
+  };
 
   const lock = useLockButton(locked, (next) => {
     if (next) {
@@ -155,34 +160,27 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
       >
         <div className="cols">
           <div className="col">
-            <BakesCard
-              bakes={bakes}
-              order={1}
-              onStart={() => {
-                autosave.flush();
-                startBake(recipe, s);
-              }}
-            />
-            <YeastCard d={d} order={2} />
-            <DoughCard d={d} order={3} />
+            <YeastCard d={d} order={1} />
+            <DoughCard d={d} order={2} />
+            {/* Notes aren't settings: they stay editable while the recipe is locked. */}
             <NotesCard
-              id="method"
-              title="Method"
+              id="notes"
+              title="Notes"
+              hint="Method, tips, what to look for"
               value={notes}
               onChange={setNotes}
-              editable={!locked}
-              placeholder="Write the method: steps, tips, and what to look for…"
-              empty="No method yet. Tap Edit to write the steps."
+              editable
+              placeholder="Write the method, tips, and what to look for…"
+              empty=""
               template={METHOD_TEMPLATE[kind]}
-              order={5}
+              order={4}
             />
           </div>
           <div className="col sticky">
-            <RecipeCard d={d} onFull={() => setCook(true)} order={4} />
-            <TempFold d={d} order={6} />
-            <TimingFold d={d} open={timingOpen} onToggle={setTimingOpen} order={7}>
-              <p className="note">To plan for another time, start a bake and set when you mix the {d.c.model.name.toLowerCase()}.</p>
-            </TimingFold>
+            <RecipeCard d={d} onFull={() => setCook(true)} order={3} />
+            <TempFold d={d} order={5} />
+            <TimingFold d={d} open={timingOpen} onToggle={setTimingOpen} order={6} />
+            <BakesCard bakes={bakes} onStart={bake} order={7} />
             <HowCard c={d.c} order={8} />
           </div>
         </div>
@@ -213,6 +211,9 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
             </>
           ) : (
             <div className="sheet-actions">
+              <button type="button" className="action" onClick={bake}>
+                <Icon name="flame" /> Start a bake
+              </button>
               <button
                 type="button"
                 className="action"
@@ -248,6 +249,7 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
   );
 }
 
+/** Bakes made from this recipe, and a way to start one. Low on the page: most of the time you just use the recipe. */
 function BakesCard({ bakes, onStart, order }: { bakes: Bake[]; onStart: () => void; order: number }) {
   const now = useNow();
   const [all, setAll] = useState(false);
@@ -266,19 +268,19 @@ function BakesCard({ bakes, onStart, order }: { bakes: Bake[]; onStart: () => vo
         </ul>
       ) : (
         <p className="note">
-          Each time you make this, start a bake. It gets its own schedule and notes, and you can tweak it without changing the recipe.
+          Want to follow one session on the clock? A bake keeps its own start time, tweaks and notes without changing the recipe.
         </p>
       )}
-      {bakes.length > shown.length ? (
-        <div>
+      <div className="btn-row">
+        <button type="button" className="btn small" onClick={onStart}>
+          <Icon name="flame" size={16} /> Start a bake
+        </button>
+        {bakes.length > shown.length ? (
           <button type="button" className="btn small" onClick={() => setAll(true)}>
             Show all {bakes.length}
           </button>
-        </div>
-      ) : null}
-      <button type="button" className="btn primary block lg" onClick={onStart}>
-        <Icon name="flame" size={20} /> Start a bake
-      </button>
+        ) : null}
+      </div>
     </section>
   );
 }

@@ -28,7 +28,7 @@ import {
   type Calc,
   type Timeline,
 } from '../lib/dough';
-import { useLocked } from '../lib/lock';
+import { Locked, useLocked } from '../lib/lock';
 import { useNow } from '../lib/useNow';
 import { useStoredFlag } from '../lib/useStoredFlag';
 import { Fold, mobileOrder } from './Fold';
@@ -89,55 +89,58 @@ export function YeastCard({ d, order }: { d: Dough; order?: number }) {
       return list[Math.max(0, Math.min(list.length - 1, i + dir))];
     },
   });
+  // The chart is scheduling (how warm, how long), not the recipe's ratios: it stays usable while locked.
   return (
-    <section className="card" id="yeast" aria-labelledby="h-yeast" style={mobileOrder(order)}>
-      <div className="card-h">
-        <h2 id="h-yeast">{m.name} yeast</h2>
-        <span className="hint">Tap a cell to pick temperature × time.</span>
-      </div>
-      <Heatmap model={m} temp={c.temp} hours={c.hours} onPick={onPick} start={start} live={live} after={afterReady(s)} reveal={reveal} />
-      <div className="grid">
-        <Stepper
-          big
-          label="Ferment at"
-          unit="°C"
-          value={c.temp}
-          show={(v) => `${v}°`}
-          {...grid(m.temps)}
-          onChange={(v) => {
-            set('temp', v);
-            setReveal((r) => r + 1);
-          }}
-        />
-        <Stepper
-          big
-          label="For"
-          unit="hours"
-          value={c.hours}
-          show={(v) => `${v} h`}
-          {...grid(m.hours)}
-          onChange={(v) => {
-            set('hours', v);
-            setReveal((r) => r + 1);
-          }}
-        />
-      </div>
-      <div className="stats">
-        <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
-        <Stat k={`${m.name} yeast`} v={g1(c.pre.yeast)} />
-        {live || !tl ? (
-          <>
-            <Stat k={`${m.name} ready after`} v={fmtDur(c.hours * 60)} />
-            <Stat k="Bake after" v={fmtDur(c.hours * 60 + afterReady(s))} accent />
-          </>
-        ) : (
-          <>
-            <Stat k={`Ready · ${fmtWeekday(tl.ready)}`} v={fmtClock(tl.ready)} />
-            <Stat k={`Bake · ${fmtWeekday(tl.bake)}`} v={fmtClock(tl.bake)} accent />
-          </>
-        )}
-      </div>
-    </section>
+    <Locked.Provider value={false}>
+      <section className="card" id="yeast" aria-labelledby="h-yeast" style={mobileOrder(order)}>
+        <div className="card-h">
+          <h2 id="h-yeast">{m.name} yeast</h2>
+          <span className="hint">Tap a cell to pick temperature × time.</span>
+        </div>
+        <Heatmap model={m} temp={c.temp} hours={c.hours} onPick={onPick} start={start} live={live} after={afterReady(s)} reveal={reveal} />
+        <div className="grid">
+          <Stepper
+            big
+            label="Ferment at"
+            unit="°C"
+            value={c.temp}
+            show={(v) => `${v}°`}
+            {...grid(m.temps)}
+            onChange={(v) => {
+              set('temp', v);
+              setReveal((r) => r + 1);
+            }}
+          />
+          <Stepper
+            big
+            label="For"
+            unit="hours"
+            value={c.hours}
+            show={(v) => `${v} h`}
+            {...grid(m.hours)}
+            onChange={(v) => {
+              set('hours', v);
+              setReveal((r) => r + 1);
+            }}
+          />
+        </div>
+        <div className="stats">
+          <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
+          <Stat k={`${m.name} yeast`} v={g1(c.pre.yeast)} />
+          {live || !tl ? (
+            <>
+              <Stat k={`${m.name} ready after`} v={fmtDur(c.hours * 60)} />
+              <Stat k="Bake after" v={fmtDur(c.hours * 60 + afterReady(s))} accent />
+            </>
+          ) : (
+            <>
+              <Stat k={`Ready · ${fmtWeekday(tl.ready)}`} v={fmtClock(tl.ready)} />
+              <Stat k={`Bake · ${fmtWeekday(tl.bake)}`} v={fmtClock(tl.bake)} accent />
+            </>
+          )}
+        </div>
+      </section>
+    </Locked.Provider>
   );
 }
 
