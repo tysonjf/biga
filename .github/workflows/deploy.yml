@@ -1,0 +1,83 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  deploy:
+    # Deploys main (or a manual run) to your Cloudflare account. See README → Deploy.
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+      PASSWORD_PEPPER: ${{ secrets.PASSWORD_PEPPER }}
+      TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+      TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+      APP_URL: ${{ vars.APP_URL }}
+    steps:
+      - name: Check configuration
+        run: |
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID BETTER_AUTH_SECRET PASSWORD_PEPPER; do
+            if [ -z "${!name}" ]; then echo "::error::Missing repository secret $name (see README → Deploy)"; missing=1; fi
+          done
+          if [ -n "$TURNSTILE_SECRET_KEY" ] && [ -z "$TURNSTILE_SITE_KEY" ]; then
+            echo "::error::TURNSTILE_SECRET_KEY is set but the TURNSTILE_SITE_KEY variable isn't. Add both or neither."; missing=1
+          fi
+          if [ -z "$TURNSTILE_SECRET_KEY" ]; then
+            echo "::warning::Turnstile isn't configured, so sign-up and sign-in have no bot check. Add TURNSTILE_SECRET_KEY (secret) and TURNSTILE_SITE_KEY (variable)."
+          fi
+          exit $missing
+
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Create the D1 database (first deploy only)
+        run: pnpm exec wrangler d1 info biga-db > /dev/null 2>&1 || pnpm exec wrangler d1 create biga-db
+
+      - name: Apply database migrations
+        run: pnpm exec wrangler d1 migrations apply biga-db --remote
+
+      - name: Deploy the Worker
+        run: |
+          # Secrets ride along with the new version; anything left out keeps its current value.
+          node -e '
+            const out = {};
+            for (const k of ["BETTER_AUTH_SECRET", "PASSWORD_PEPPER", "TURNSTILE_SECRET_KEY"]) if (process.env[k]) out[k] = process.env[k];
+            require("fs").writeFileSync(process.env.RUNNER_TEMP + "/secrets.json", JSON.stringify(out));
+          '
+          args=(--secrets-file "$RUNNER_TEMP/secrets.json")
+          [ -n "$TURNSTILE_SITE_KEY" ] && args+=(--var "TURNSTILE_SITE_KEY:$TURNSTILE_SITE_KEY")
+          [ -n "$APP_URL" ] && args+=(--var "BETTER_AUTH_URL:$APP_URL")
+          pnpm exec wrangler deploy "${args[@]}"
+          rm -f "$RUNNER_TEMP/secrets.json"
