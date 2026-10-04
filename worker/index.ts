@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { getAuth } from './auth';
 import { recipes, type AppEnv } from './recipes';
+import { toppings } from './toppings';
 
 const app = new Hono<AppEnv>().basePath('/api');
 
@@ -59,19 +60,22 @@ app.get('/config', (c) =>
   }),
 );
 
-/* ---------- recipes (signed in) ---------- */
+/* ---------- recipes and toppings (signed in) ---------- */
 
-app.use('/recipes/*', async (c, next) => {
-  const session = await getAuth(c.env, new URL(c.req.url).origin).api.getSession({ headers: c.req.raw.headers });
-  if (!session) return c.json({ message: 'Sign in to see your recipes.', code: 'UNAUTHORIZED' }, 401);
-  c.set('userId', session.user.id);
-  await next();
-});
-app.use('/recipes/*', async (c, next) => {
-  if (c.req.method !== 'GET' && (await limited(c.env.WRITE_USER, `write:${c.get('userId')}`))) return tooMany(c, 10);
-  await next();
-});
+for (const path of ['/recipes/*', '/toppings/*']) {
+  app.use(path, async (c, next) => {
+    const session = await getAuth(c.env, new URL(c.req.url).origin).api.getSession({ headers: c.req.raw.headers });
+    if (!session) return c.json({ message: 'Sign in to see your recipes.', code: 'UNAUTHORIZED' }, 401);
+    c.set('userId', session.user.id);
+    await next();
+  });
+  app.use(path, async (c, next) => {
+    if (c.req.method !== 'GET' && (await limited(c.env.WRITE_USER, `write:${c.get('userId')}`))) return tooMany(c, 10);
+    await next();
+  });
+}
 app.route('/recipes', recipes);
+app.route('/toppings', toppings);
 
 app.notFound((c) => c.json({ message: 'Not found', code: 'NOT_FOUND' }, 404));
 app.onError((e, c) => {

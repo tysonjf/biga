@@ -31,10 +31,27 @@ describe('recipe maths', () => {
   it('adds up to the requested dough weight', () => {
     const s = biga();
     const c = calc('biga', s);
-    const sum = c.pre.total + c.final.flour + c.final.water + c.final.salt + c.final.oil + c.final.yeast;
+    const sum = c.pre.total + c.final.flour + c.final.water + c.final.salt + c.final.oil + c.final.sugar + c.final.yeast;
     expect(sum).toBeCloseTo(c.dough, 6);
     expect(c.dough).toBeCloseTo(4 * 280 * 1.02, 6);
     expect(c.water / c.flour).toBeCloseTo(0.72, 6);
+  });
+
+  it('adds sugar to the final mix as a share of the total flour, like oil', () => {
+    const c = calc('biga', biga({ oil: 3, sugar: 2 }));
+    expect(c.final.sugar / c.flour).toBeCloseTo(0.02, 6);
+    expect(c.final.oil / c.flour).toBeCloseTo(0.03, 6);
+    const sum = c.pre.total + c.final.flour + c.final.water + c.final.salt + c.final.oil + c.final.sugar + c.final.yeast;
+    expect(sum).toBeCloseTo(c.dough, 6);
+    expect(c.water / c.flour).toBeCloseTo(0.72, 6); // hydration counts water only
+  });
+
+  it('defaults to no sugar and keeps stored sugar in range', () => {
+    expect(calc('biga', biga()).final.sugar).toBe(0);
+    expect(normalise('poolish', {}).sugar).toBe(0);
+    expect(normalise('biga', { sugar: 1.5 }).sugar).toBe(1.5);
+    expect(normalise('biga', { sugar: 40 }).sugar).toBe(10);
+    expect(normalise('biga', { sugar: -1 }).sugar).toBe(0);
   });
 
   it('builds a poolish at 100% hydration whatever is stored', () => {

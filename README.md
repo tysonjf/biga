@@ -2,6 +2,8 @@
 
 An installable app (PWA) for planning biga and poolish pizza doughs to the hour. It works out the yeast, the water temperature and the timeline, and keeps your recipes in sync across devices.
 
+It also has a **Toppings** section: researched recipes for the Italian classics (red and white) and celebrated contemporary pizzas, scaled to however many pizzas you're making, plus your own topping recipes, written from scratch or copied from a classic and changed.
+
 - **Frontend:** React SPA (Vite, TanStack Router + Query). Optimistic updates, autosave, works offline.
 - **Backend:** one Cloudflare Worker (Hono) serving the static app and `/api/*`.
 - **Database:** Cloudflare D1, free plan.
@@ -76,6 +78,8 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
   - Turn on **Set flours per stage** to give each flour its own share of each stage, for example all the bread flour in the biga and all the Tipo 00 in the final dough.
   - The Dough card then shows the overall blend that results.
   - The shares in each stage always add up to 100%. Changing one moves the biggest of the other flours, which is usually the main one.
+- **Oil and sugar:** both are a percentage of the total flour and go into the final mix. Like salt, they're on top of the hydration, which counts water only.
+  - A little sugar (1–2%) helps a home oven brown the crust, and keeps an all-biga dough from coming out pale after a long fridge rest.
 - **Dough temperature:** the ball timings assume the dough comes off the mixer at 24–26 °C and the balls proof in an 18–24 °C room.
   - The water temperature comes from a mass-weighted energy balance across preferment, flour, water and mixer heat.
   - The classic "×4" rule of thumb gets it wrong when most of the water is already in a stiff biga.
@@ -88,6 +92,13 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
 
 The maths lives in `src/lib/dough.ts`, with tests in `src/lib/dough.test.ts`.
 
+## Toppings
+
+- Amounts are per pizza, for a 30–33 cm pizza from a 250–280 g ball, and scale with the **Pizzas** count (remembered on the device).
+- Each ingredient goes on at one of three points: the **base** (sauce or cream), **before the bake**, or **after the bake** (cured meats, rocket, burrata, raw oil).
+- The built-in recipes live in `src/lib/classics.ts`. Each one lists the sources it was checked against.
+- Your own toppings sync like dough recipes: saved as you type, offline first, stored in the `topping` table.
+
 ## Development
 
 ```sh
@@ -95,7 +106,7 @@ pnpm install
 cp .dev.vars.example .dev.vars
 pnpm db:migrate:local
 pnpm dev                 # http://localhost:5173 (app + Worker + local D1)
-pnpm test                # dough maths
+pnpm test                # dough maths, topping scaling and data
 pnpm typecheck
 pnpm build && pnpm preview   # production build, service worker included
 ```
@@ -108,9 +119,9 @@ pnpm build && pnpm preview   # production build, service worker included
 ### Layout
 
 ```
-src/            React app: routes/, components/, lib/ (dough maths, query + offline cache, auth client)
-shared/         recipe types + validation, used by app and Worker
-worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts
+src/            React app: routes/, components/, lib/ (dough maths, toppings, query + offline cache, auth client)
+shared/         recipe and topping types + validation, used by app and Worker
+worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts, toppings.ts
 migrations/     D1 schema
 public/         icons, iOS launch screens, _headers (CSP + caching)
 ```

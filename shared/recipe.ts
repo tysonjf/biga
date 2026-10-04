@@ -16,6 +16,7 @@ export type Settings = {
   hyd: number; // total hydration, % of total flour
   salt: number; // % of total flour
   oil: number; // % of total flour
+  sugar: number; // % of total flour, added in the final mix
   bp: number; // preferment share, % of total flour
   bh: number; // preferment hydration, % of preferment flour
   boost: number; // ± % on the charted preferment yeast
@@ -49,6 +50,7 @@ export const FIELDS: Record<NumKey, Field> = {
   hyd: { label: 'Hydration', unit: '%', step: 0.5, min: 50, max: 90, dec: 1 },
   salt: { label: 'Salt', unit: '%', step: 0.1, min: 0, max: 5, dec: 1 },
   oil: { label: 'Oil', unit: '%', step: 0.5, min: 0, max: 15, dec: 1 },
+  sugar: { label: 'Sugar', unit: '%', step: 0.5, min: 0, max: 10, dec: 1 },
   waste: { label: 'Waste', unit: '%', step: 0.5, min: 0, max: 25, dec: 1 },
   bp: { label: 'Share of flour', unit: '%', step: 5, min: 10, max: 100, dec: 0 },
   bh: { label: 'Hydration', unit: '%', step: 1, min: 40, max: 125, dec: 0 },
@@ -76,6 +78,7 @@ const COMMON = {
   hyd: 72,
   salt: 2.5,
   oil: 0,
+  sugar: 0,
   boost: 0,
   fy: 0.1,
   buf: 15,

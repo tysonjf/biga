@@ -68,8 +68,8 @@ export function RecipesPage() {
 
   return (
     <Page
-      title="Recipes"
-      large={<h1>Recipes</h1>}
+      title="Doughs"
+      large={<h1>Doughs</h1>}
       left={
         <Link to="/settings" className="nav-btn" aria-label="Settings" viewTransition={{ types: ['push'] }}>
           <Icon name="gear" />
@@ -127,7 +127,7 @@ export function RecipesPage() {
       ) : (
         <div className="empty">
           <DoughBall />
-          <h2>No recipes yet</h2>
+          <h2>No doughs yet</h2>
           <p>Start with a stiff biga or a runny poolish. Everything saves as you go.</p>
           <div className="empty-actions">
             <button type="button" className="btn primary" onClick={() => create('biga')}>
