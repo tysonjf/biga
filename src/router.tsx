@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, Navigate, Outlet, useRouterState } from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router';
 import { useSession } from './lib/auth';
 import { useOnline, usePwaState, applyUpdate, dismissUpdate } from './lib/pwa';
 import { useToast, dismiss } from './lib/toast';
@@ -44,10 +44,30 @@ function Root() {
   return (
     <>
       {body}
+      {session.data && TABS.some((t) => t.to === path) ? <TabBar path={path} /> : null}
       <OfflineBadge />
       <UpdateBanner />
       <Toaster />
     </>
+  );
+}
+
+const TABS = [
+  { to: '/', label: 'Doughs', icon: 'dough' },
+  { to: '/toppings', label: 'Toppings', icon: 'pizza' },
+] as const;
+
+/** The two top-level sections. Only shown on their list pages; recipes open full screen above it. */
+function TabBar({ path }: { path: string }) {
+  return (
+    <nav className="tabbar" aria-label="Sections">
+      {TABS.map((t) => (
+        <Link key={t.to} to={t.to} className="tab" aria-current={path === t.to ? 'page' : undefined}>
+          <Icon name={t.icon} size={26} />
+          <span>{t.label}</span>
+        </Link>
+      ))}
+    </nav>
   );
 }
 
@@ -114,6 +134,20 @@ const bakeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/b/$id',
 
 const playRoute = createRoute({ getParentRoute: () => rootRoute, path: '/play', component: PlaygroundPage });
 
+// The toppings pages carry the recipe collection, so they load on first visit (and are precached for offline).
+const toppingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/toppings',
+  component: lazyRouteComponent(() => import('./routes/Toppings'), 'ToppingsPage'),
+});
+
+const toppingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/toppings/$id',
+  component: lazyRouteComponent(() => import('./routes/Topping'), 'ToppingPage'),
+  validateSearch: (s: Record<string, unknown>): { edit?: true } => (s.edit === true || s.edit === 'true' ? { edit: true } : {}),
+});
+
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage });
 
 const signInRoute = createRoute({
@@ -124,7 +158,7 @@ const signInRoute = createRoute({
     s.mode === 'signup' ? { mode: 'signup' } : {},
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, recipeRoute, bakeRoute, playRoute, settingsRoute, signInRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, recipeRoute, bakeRoute, playRoute, toppingsRoute, toppingRoute, settingsRoute, signInRoute]);
 
 export const router = createRouter({
   routeTree,

@@ -15,6 +15,7 @@ An installable app (PWA) for planning biga and poolish pizza doughs to the hour.
 - **Recipes and bakes open locked**, so a stray tap while scrolling can't change the amounts. Tap **Edit** to unlock and **Done** to lock again. Some things stay usable while locked, because they aren't the recipe's ratios: when you'll mix, the yeast chart (ferment temperature × time), which are scheduling, and the notes.
 - **The playground** is a free calculator, one for biga and one for poolish. It saves as you go and never changes your recipes. **Save as recipe** turns it into a recipe.
 - **Notes** (a recipe's notes, a bake's notes) are rich text: headings, numbered steps, bullets and checklists. They're stored as Markdown. The editor loads only on recipe and bake pages.
+- **Toppings** is the second tab: researched recipes for the Italian classics (red and white) and celebrated contemporary pizzas, scaled to however many pizzas you're making, plus your own topping recipes, written from scratch or copied from a classic and changed.
 
 - **Frontend:** React SPA (Vite, TanStack Router + Query). Optimistic updates, autosave, works offline.
 - **Backend:** one Cloudflare Worker (Hono) serving the static app and `/api/*`.
@@ -91,6 +92,8 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
   - Turn on **Set flours per stage** to give each flour its own share of each stage, for example all the bread flour in the biga and all the Tipo 00 in the final dough.
   - The Dough card then shows the overall blend that results.
   - The shares in each stage always add up to 100%. Changing one moves the biggest of the other flours, which is usually the main one.
+- **Oil and sugar:** both are a percentage of the total flour and go into the final mix. Like salt, they're on top of the hydration, which counts water only.
+  - A little sugar (1–2%) helps a home oven brown the crust, and keeps an all-biga dough from coming out pale after a long fridge rest.
 - **Dough temperature:** the ball timings assume the dough comes off the mixer at 24–26 °C and the balls proof in an 18–24 °C room.
   - The water temperature comes from a mass-weighted energy balance across preferment, flour, water and mixer heat.
   - The classic "×4" rule of thumb gets it wrong when most of the water is already in a stiff biga.
@@ -104,6 +107,13 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
 
 The maths lives in `src/lib/dough.ts`, with tests in `src/lib/dough.test.ts`. The tests run in Sydney time so the clock-change cases are real.
 
+## Toppings
+
+- Amounts are per pizza, for a 30–33 cm pizza from a 250–280 g ball, and scale with the **Pizzas** count (remembered on the device).
+- Each ingredient goes on at one of three points: the **base** (sauce or cream), **before the bake**, or **after the bake** (cured meats, rocket, burrata, raw oil).
+- The built-in recipes live in `src/lib/classics.ts`. Each one lists the sources it was checked against.
+- Your own toppings sync like dough recipes: saved as you type, offline first, stored in the `topping` table.
+
 ## Development
 
 ```sh
@@ -111,7 +121,7 @@ pnpm install
 cp .dev.vars.example .dev.vars
 pnpm db:migrate:local
 pnpm dev                 # http://localhost:5173 (app + Worker + local D1)
-pnpm test                # dough maths
+pnpm test                # dough maths, topping scaling and data
 pnpm typecheck
 pnpm build && pnpm preview   # production build, service worker included
 ```
@@ -124,11 +134,12 @@ pnpm build && pnpm preview   # production build, service worker included
 ### Layout
 
 ```
-src/            React app: routes/ (home, recipe, bake, playground), components/ (Dough.tsx holds the
-                calculator cards every page shares), lib/ (dough maths, query + offline cache, auth client)
-shared/         recipe, bake and playground types + validation, used by app and Worker
-worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts, bakes.ts, playground.ts
-migrations/     D1 schema. 0003 adds bakes and the playground, and turns any recipe start time from the
-                last week into a bake so a schedule in progress isn't lost
+src/            React app: routes/ (home, recipe, bake, playground, toppings), components/ (Dough.tsx holds
+                the calculator cards every page shares), lib/ (dough maths, toppings, query + offline cache, auth client)
+shared/         recipe, bake, playground and topping types + validation, used by app and Worker
+worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts, bakes.ts, playground.ts, toppings.ts
+migrations/     D1 schema. 0003_bakes adds bakes and the playground, and turns any recipe start time from the
+                last week into a bake so a schedule in progress isn't lost. 0003_toppings adds toppings
+                (two 0003s because both shipped separately; they touch different tables)
 public/         icons, iOS launch screens, _headers (CSP + caching)
 ```

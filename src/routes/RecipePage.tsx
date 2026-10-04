@@ -35,7 +35,7 @@ function Missing({ busy }: { busy: boolean }) {
           <h2>Recipe not found</h2>
           <p>It may have been deleted on another device.</p>
           <Link to="/" className="btn">
-            Back to recipes
+            Back to doughs
           </Link>
         </div>
       )}
@@ -45,9 +45,9 @@ function Missing({ busy }: { busy: boolean }) {
 
 export function BackHome() {
   return (
-    <Link to="/" className="nav-btn back" aria-label="Back to recipes" viewTransition={{ types: ['pop'] }}>
+    <Link to="/" className="nav-btn back" aria-label="Back to doughs" viewTransition={{ types: ['pop'] }}>
       <Icon name="back" />
-      <span>Recipes</span>
+      <span>Doughs</span>
     </Link>
   );
 }

@@ -2,22 +2,26 @@ import { MutationCache, QueryCache, QueryClient, useMutation, useQuery, useQuery
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { persistQueryClientRestore, persistQueryClientSubscribe } from '@tanstack/react-query-persist-client';
 import type { Bake, Kind, Play, Playground, Recipe, Settings } from '../../shared/recipe';
+import type { Topping } from '../../shared/topping';
 import { api, ApiError, isAuthError } from './api';
 import { toast } from './toast';
 
 export const RECIPES = ['recipes'] as const;
 export const BAKES = ['bakes'] as const;
 export const PLAYGROUND = ['playground'] as const;
+export const TOPPINGS = ['toppings'] as const;
 export const SESSION = ['session'] as const;
 
 // Mutation keys are [entity, operation]. The recipe ones predate bakes and must keep their names so
 // saves queued offline by an older version of the app still replay.
-type Entity = 'recipe' | 'bake' | 'playground';
+type Entity = 'recipe' | 'bake' | 'playground' | 'topping';
 const RECIPE_SAVE = ['recipe', 'save'] as const;
 const RECIPE_DELETE = ['recipe', 'delete'] as const;
 const BAKE_SAVE = ['bake', 'save'] as const;
 const BAKE_DELETE = ['bake', 'delete'] as const;
 const PLAY_SAVE = ['playground', 'save'] as const;
+const TOPPING_SAVE = ['topping', 'save'] as const;
+const TOPPING_DELETE = ['topping', 'delete'] as const;
 
 /** Every write shares one queue, so they reach the server in order (a recipe before its first bake). */
 const scope = { id: 'recipes' };
@@ -72,7 +76,7 @@ function unsent() {
 }
 
 /** Re-apply saves/deletes that haven't reached the server yet on top of fresh server data. */
-function applyPending<T extends Item>(entity: 'recipe' | 'bake', list: T[]): T[] {
+function applyPending<T extends Item>(entity: 'recipe' | 'bake' | 'topping', list: T[]): T[] {
   for (const m of unsent()) {
     if (m.entity === entity && m.op === 'save') list = upsert(list, m.vars as T);
     if (m.entity === entity && m.op === 'delete') list = without(list, (m.vars as DeleteVars).id);
@@ -86,6 +90,7 @@ function applyPending<T extends Item>(entity: 'recipe' | 'bake', list: T[]): T[]
 /** Put a recipe or bake in the cache right now (e.g. before navigating to it). */
 export const primeRecipe = (r: Recipe) => queryClient.setQueryData<Recipe[]>(RECIPES, (list) => upsert(list, r));
 export const primeBake = (b: Bake) => queryClient.setQueryData<Bake[]>(BAKES, (list) => upsert(list, b));
+export const primeTopping = (t: Topping) => queryClient.setQueryData<Topping[]>(TOPPINGS, (list) => upsert(list, t));
 
 function failed(err: unknown, fallback: string, refetch: readonly string[]) {
   if (isAuthError(err)) return;
@@ -97,7 +102,7 @@ function failed(err: unknown, fallback: string, refetch: readonly string[]) {
 
 /** Saves and deletes for a list of items, applied to the cache straight away. */
 function listMutations<T extends Item>(o: {
-  entity: 'recipe' | 'bake';
+  entity: 'recipe' | 'bake' | 'topping';
   list: readonly [string];
   url: string;
   one: string;
@@ -157,6 +162,14 @@ listMutations<Bake>({
   }),
 });
 
+listMutations<Topping>({
+  entity: 'topping',
+  list: TOPPINGS,
+  url: '/api/toppings',
+  one: 'topping',
+  body: (t) => ({ name: t.name, data: t.data, createdAt: t.createdAt, updatedAt: t.updatedAt }),
+});
+
 const EMPTY_PLAYGROUND: Playground = { biga: null, poolish: null };
 
 queryClient.setMutationDefaults(PLAY_SAVE, {
@@ -204,6 +217,19 @@ export function useBake(id: string) {
   return { ...q, bake: q.data?.find((b) => b.id === id) };
 }
 
+export function useToppings(enabled = true) {
+  return useQuery({
+    queryKey: TOPPINGS,
+    queryFn: async () => applyPending('topping', (await api<{ toppings: Topping[] }>('/api/toppings')).toppings.sort(byUpdated)),
+    enabled,
+  });
+}
+
+export function useTopping(id: string) {
+  const q = useToppings();
+  return { ...q, topping: q.data?.find((t) => t.id === id) };
+}
+
 export function usePlayground() {
   return useQuery({
     queryKey: PLAYGROUND,
@@ -219,12 +245,14 @@ export function usePlayground() {
   });
 }
 
-/** Writes run one at a time, in order, across recipes, bakes and the playground. */
+/** Writes run one at a time, in order, across recipes, bakes, the playground and toppings. */
 export const useSaveRecipe = () => useMutation<Recipe, unknown, Recipe>({ mutationKey: RECIPE_SAVE, scope });
 export const useDeleteRecipe = () => useMutation<void, unknown, DeleteVars>({ mutationKey: RECIPE_DELETE, scope });
 export const useSaveBake = () => useMutation<Bake, unknown, Bake>({ mutationKey: BAKE_SAVE, scope });
 export const useDeleteBake = () => useMutation<void, unknown, DeleteVars>({ mutationKey: BAKE_DELETE, scope });
 export const useSavePlay = () => useMutation<{ play: Play | null }, unknown, PlayVars>({ mutationKey: PLAY_SAVE, scope });
+export const useSaveTopping = () => useMutation<Topping, unknown, Topping>({ mutationKey: TOPPING_SAVE, scope });
+export const useDeleteTopping = () => useMutation<void, unknown, DeleteVars>({ mutationKey: TOPPING_DELETE, scope });
 
 export function useQc() {
   return useQueryClient();

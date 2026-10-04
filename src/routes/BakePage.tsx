@@ -46,7 +46,7 @@ export function BakePage() {
             <h2>Bake not found</h2>
             <p>It may have been deleted on another device.</p>
             <Link to="/" className="btn">
-              Back to recipes
+              Back to doughs
             </Link>
           </div>
         )}

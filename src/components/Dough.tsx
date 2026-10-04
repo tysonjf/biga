@@ -217,7 +217,7 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
     <section className="card" id="dough" aria-labelledby="h-dough" style={mobileOrder(order)}>
       <h2 id="h-dough">Dough</h2>
       <div className="grid three">
-        {(['balls', 'bw', 'hyd', 'salt', 'oil', 'waste'] as const).map((k) => (
+        {(['balls', 'bw', 'hyd', 'salt', 'oil', 'sugar', 'waste'] as const).map((k) => (
           <Field key={k} d={d} k={k} />
         ))}
       </div>
@@ -345,8 +345,10 @@ export function TimingFields({ d }: { d: Dough }) {
         </div>
       ) : null}
       {!s.fridge && s.proof < 120 ? <p className="warn">Give the balls at least 2 hours at room temperature before baking.</p> : null}
-      {s.fridge && kind === 'biga' && s.bp >= 90 && s.fridgeH > 16 ? (
-        <p className="warn">An all-biga dough runs out of sugar in the fridge: bake within about 12–16 hours or the crust comes out pale.</p>
+      {s.fridge && kind === 'biga' && s.bp >= 90 && s.fridgeH > 16 && s.sugar < 1 ? (
+        <p className="warn">
+          An all-biga dough runs out of sugar in the fridge: bake within about 12–16 hours, or add 1–2% sugar, or the crust comes out pale.
+        </p>
       ) : s.fridge && s.fridgeH > 48 ? (
         <p className="warn">Balls are best within about 48 hours in the fridge, and only with strong flour.</p>
       ) : null}
@@ -439,7 +441,7 @@ export function HowCard({ c, order }: { c: Calc; order?: number }) {
       </p>
       <p className="note">
         The yeast chart is an estimate, not a published table: {m.note} Tune it to your flour and yeast with the yeast boost: about +20% if the{' '}
-        {m.name.toLowerCase()} is under-risen at mix time, −20% if it smells sharp. Hydration counts water only; oil and salt are extra.
+        {m.name.toLowerCase()} is under-risen at mix time, −20% if it smells sharp. Hydration counts water only; oil, sugar and salt are extra.
       </p>
     </section>
   );
@@ -503,6 +505,7 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
         ...(c.final.flour > 0.5 ? flourItems('fin') : []),
         { n: 'Water', sub: waterSub, tag: waterSub, g: g0(Math.max(c.final.water, 0)) },
         ...(c.final.oil > 0 ? [{ n: 'Olive oil', sub: `${num(s.oil, 1)}% of flour`, g: g0(c.final.oil) }] : []),
+        ...(c.final.sugar > 0 ? [{ n: 'Sugar', sub: `${num(s.sugar, 1)}% of flour`, g: c.final.sugar < 10 ? g1(c.final.sugar) : g0(c.final.sugar) }] : []),
         { n: 'Salt', sub: `${num(s.salt, 1)}% of flour`, g: g0(c.final.salt) },
         ...(c.final.yeast > 0
           ? [

@@ -4,6 +4,7 @@ import type { AppEnv } from './common';
 import { recipes } from './recipes';
 import { bakes } from './bakes';
 import { playground } from './playground';
+import { toppings } from './toppings';
 
 const app = new Hono<AppEnv>().basePath('/api');
 
@@ -64,7 +65,7 @@ app.get('/config', (c) =>
 
 /* ---------- your data (signed in) ---------- */
 
-for (const path of ['/recipes/*', '/bakes/*', '/playground/*']) {
+for (const path of ['/recipes/*', '/bakes/*', '/playground/*', '/toppings/*']) {
   app.use(path, async (c, next) => {
     const session = await getAuth(c.env, new URL(c.req.url).origin).api.getSession({ headers: c.req.raw.headers });
     if (!session) return c.json({ message: 'Sign in to see your recipes.', code: 'UNAUTHORIZED' }, 401);
@@ -79,6 +80,7 @@ for (const path of ['/recipes/*', '/bakes/*', '/playground/*']) {
 app.route('/recipes', recipes);
 app.route('/bakes', bakes);
 app.route('/playground', playground);
+app.route('/toppings', toppings);
 
 app.notFound((c) => c.json({ message: 'Not found', code: 'NOT_FOUND' }, 404));
 app.onError((e, c) => {
