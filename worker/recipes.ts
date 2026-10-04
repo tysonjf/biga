@@ -22,7 +22,7 @@ const toRecipe = (r: Row): Recipe => ({
   updatedAt: r.updated_at,
 });
 
-function safeJson(s: string): unknown {
+export function safeJson(s: string): unknown {
   try {
     return JSON.parse(s);
   } catch {
@@ -30,7 +30,16 @@ function safeJson(s: string): unknown {
   }
 }
 
-const err = (message: string, code: string) => ({ message, code });
+export const err = (message: string, code: string) => ({ message, code });
+
+/** Client timestamps, never ahead of our clock: a future `updatedAt` would block later edits. */
+export function stamps(body: Record<string, unknown>) {
+  const now = Date.now();
+  const clampTs = (v: unknown, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.min(Math.floor(v), now) : fallback;
+  const updatedAt = clampTs(body.updatedAt, now);
+  return { updatedAt, createdAt: Math.min(clampTs(body.createdAt, now), updatedAt) };
+}
 
 export const recipes = new Hono<AppEnv>();
 
@@ -59,12 +68,7 @@ recipes.put('/:id', async (c) => {
   if (!KINDS.includes(kind)) return c.json(err('Unknown recipe type.', 'BAD_KIND'), 400);
   const name = (typeof body.name === 'string' ? body.name : '').trim().slice(0, LIMITS.name) || 'Untitled';
   const settings = JSON.stringify(normalise(kind, body.settings));
-  const now = Date.now();
-  // Never trust a client clock that runs ahead of ours: a future timestamp would block later edits.
-  const clampTs = (v: unknown, fallback: number) =>
-    typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.min(Math.floor(v), now) : fallback;
-  const updatedAt = clampTs(body.updatedAt, now);
-  const createdAt = Math.min(clampTs(body.createdAt, now), updatedAt);
+  const { createdAt, updatedAt } = stamps(body);
   const userId = c.get('userId');
   const db = c.env.DB;
 

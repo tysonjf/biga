@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { useCanGoBack, useNavigate, useRouter } from '@tanstack/react-router';
 import { authClient, signOut, useSession } from '../lib/auth';
 import { setTheme, useTheme, type Theme } from '../lib/theme';
-import { useRecipes, hasPendingWrites } from '../lib/query';
+import { useRecipes, useToppings, hasPendingWrites } from '../lib/query';
 import { toast } from '../lib/toast';
 import { checkForUpdate, isStandalone } from '../lib/pwa';
 import { Page } from '../components/Page';
@@ -12,6 +12,9 @@ import { Sheet } from '../components/Sheet';
 export function SettingsPage() {
   const { data: user } = useSession();
   const { data: recipes } = useRecipes();
+  const { data: toppings } = useToppings();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
   const theme = useTheme();
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState<null | 'signout' | 'delete'>(null);
@@ -45,10 +48,16 @@ export function SettingsPage() {
       title="Settings"
       large={<h1>Settings</h1>}
       left={
-        <Link to="/" className="nav-btn back" aria-label="Back to recipes" viewTransition={{ types: ['pop'] }}>
+        // Settings opens from both tabs, so go back to whichever one it came from.
+        <button
+          type="button"
+          className="nav-btn back"
+          aria-label="Back"
+          onClick={() => (canGoBack ? router.history.back() : navigate({ to: '/', viewTransition: { types: ['pop'] } }))}
+        >
           <Icon name="back" />
-          <span>Recipes</span>
-        </Link>
+          <span>Back</span>
+        </button>
       }
     >
       <div className="group-label">Account</div>
@@ -58,8 +67,12 @@ export function SettingsPage() {
           <span className="cell-val">{user?.email}</span>
         </li>
         <li className="cell">
-          <span>Recipes</span>
+          <span>Doughs</span>
           <span className="cell-val">{recipes?.length ?? '–'}</span>
+        </li>
+        <li className="cell">
+          <span>Toppings</span>
+          <span className="cell-val">{toppings?.length ?? '–'}</span>
         </li>
         <li>
           <button
@@ -140,7 +153,7 @@ export function SettingsPage() {
         }}
         title="Delete your account?"
       >
-        <p className="sheet-text">This permanently deletes your account and all {recipes?.length ?? ''} recipes. It can’t be undone.</p>
+        <p className="sheet-text">This permanently deletes your account, your doughs and your toppings. It can’t be undone.</p>
         <form
           className="form"
           onSubmit={(e) => {

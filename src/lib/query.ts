@@ -2,16 +2,11 @@ import { MutationCache, QueryCache, QueryClient, useMutation, useQuery, useQuery
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { persistQueryClientRestore, persistQueryClientSubscribe } from '@tanstack/react-query-persist-client';
 import type { Recipe } from '../../shared/recipe';
+import type { Topping } from '../../shared/topping';
 import { api, ApiError, isAuthError } from './api';
 import { toast } from './toast';
 
-export const RECIPES = ['recipes'] as const;
 export const SESSION = ['session'] as const;
-
-const SAVE = ['recipe', 'save'] as const;
-const DELETE = ['recipe', 'delete'] as const;
-
-type DeleteVars = { id: string };
 
 const retry = (count: number, err: unknown) => !(err instanceof ApiError && err.status < 500 && err.status !== 429) && count < 3;
 
@@ -36,97 +31,127 @@ export const queryClient: QueryClient = new QueryClient({
   },
 });
 
-/* ---------- optimistic helpers ---------- */
+/* ---------- synced collections (recipes, toppings) ---------- */
 
-const byUpdated = (a: Recipe, b: Recipe) => b.updatedAt - a.updatedAt;
+type Doc = { id: string; updatedAt: number };
+type DeleteVars = { id: string };
 
-function upsert(list: Recipe[] | undefined, r: Recipe): Recipe[] {
-  const rest = (list ?? []).filter((x) => x.id !== r.id);
-  return [r, ...rest].sort(byUpdated);
-}
-const remove = (list: Recipe[] | undefined, id: string) => (list ?? []).filter((x) => x.id !== id);
+/**
+ * A per-user list kept in the query cache and synced to `/api/<plural>`, with optimistic saves and
+ * deletes that survive going offline and reloading.
+ */
+function collection<T extends Doc>(c: { noun: 'recipe' | 'topping'; body: (d: T) => unknown }) {
+  const plural = `${c.noun}s`;
+  const LIST = [plural] as const;
+  const SAVE = [c.noun, 'save'] as const;
+  const DELETE = [c.noun, 'delete'] as const;
+  const scope = { id: plural };
 
-/** Re-apply saves/deletes that haven't reached the server yet on top of fresh server data. */
-function applyPending(list: Recipe[]): Recipe[] {
-  const pending = queryClient
-    .getMutationCache()
-    .getAll()
-    .filter((m) => m.state.status === 'pending' || m.state.isPaused)
-    .sort((a, b) => a.state.submittedAt - b.state.submittedAt);
-  for (const m of pending) {
-    const key = m.options.mutationKey?.[1];
-    if (key === 'save') list = upsert(list, m.state.variables as Recipe);
-    if (key === 'delete') list = remove(list, (m.state.variables as DeleteVars).id);
+  const byUpdated = (a: T, b: T) => b.updatedAt - a.updatedAt;
+  const upsert = (list: T[] | undefined, d: T): T[] => [d, ...(list ?? []).filter((x) => x.id !== d.id)].sort(byUpdated);
+  const remove = (list: T[] | undefined, id: string) => (list ?? []).filter((x) => x.id !== id);
+
+  /** Re-apply saves/deletes that haven't reached the server yet on top of fresh server data. */
+  function applyPending(list: T[]): T[] {
+    const pending = queryClient
+      .getMutationCache()
+      .getAll()
+      .filter((m) => m.options.mutationKey?.[0] === c.noun && (m.state.status === 'pending' || m.state.isPaused))
+      .sort((a, b) => a.state.submittedAt - b.state.submittedAt);
+    for (const m of pending) {
+      const key = m.options.mutationKey?.[1];
+      if (key === 'save') list = upsert(list, m.state.variables as T);
+      if (key === 'delete') list = remove(list, (m.state.variables as DeleteVars).id);
+    }
+    return list;
   }
-  return list;
-}
 
-/** Put a recipe in the cache right now (e.g. before navigating to it). */
-export function primeRecipe(r: Recipe) {
-  queryClient.setQueryData<Recipe[]>(RECIPES, (list) => upsert(list, r));
-}
-
-/* ---------- mutation defaults (so paused mutations can resume after a reload) ---------- */
-
-queryClient.setMutationDefaults(SAVE, {
-  mutationFn: (r: Recipe) =>
-    api<{ recipe: Recipe }>(`/api/recipes/${r.id}`, {
-      method: 'PUT',
-      json: { kind: r.kind, name: r.name, settings: r.settings, createdAt: r.createdAt, updatedAt: r.updatedAt },
-    }),
-  onMutate: async (r: Recipe) => {
-    await queryClient.cancelQueries({ queryKey: RECIPES });
-    queryClient.setQueryData<Recipe[]>(RECIPES, (list) => upsert(list, r));
-  },
-  onSuccess: (res: { recipe: Recipe }) => {
-    // Server copy wins only if nothing newer is queued locally.
-    queryClient.setQueryData<Recipe[]>(RECIPES, (list) => {
-      const cur = list?.find((x) => x.id === res.recipe.id);
-      return cur && cur.updatedAt > res.recipe.updatedAt ? list : upsert(list, res.recipe);
-    });
-  },
-  onError: (err: unknown) => {
-    if (isAuthError(err)) return;
-    toast(err instanceof ApiError ? err.message : "Couldn't save your changes. They'll stay on this device.");
-    queryClient.invalidateQueries({ queryKey: RECIPES });
-  },
-});
-
-queryClient.setMutationDefaults(DELETE, {
-  mutationFn: ({ id }: DeleteVars) => api<void>(`/api/recipes/${id}`, { method: 'DELETE' }),
-  onMutate: async ({ id }: DeleteVars) => {
-    await queryClient.cancelQueries({ queryKey: RECIPES });
-    queryClient.setQueryData<Recipe[]>(RECIPES, (list) => remove(list, id));
-  },
-  onError: (err: unknown) => {
-    if (isAuthError(err)) return;
-    toast("Couldn't delete that recipe.");
-    queryClient.invalidateQueries({ queryKey: RECIPES });
-  },
-});
-
-/* ---------- hooks ---------- */
-
-export function useRecipes(enabled = true) {
-  return useQuery({
-    queryKey: RECIPES,
-    queryFn: async () => applyPending((await api<{ recipes: Recipe[] }>('/api/recipes')).recipes.sort(byUpdated)),
-    enabled,
+  // Mutation defaults, so paused mutations can resume after a reload.
+  queryClient.setMutationDefaults(SAVE, {
+    mutationFn: (d: T) => api<Record<string, T>>(`/api/${plural}/${d.id}`, { method: 'PUT', json: c.body(d) }),
+    onMutate: async (d: T) => {
+      await queryClient.cancelQueries({ queryKey: LIST });
+      queryClient.setQueryData<T[]>(LIST, (list) => upsert(list, d));
+    },
+    onSuccess: (res: Record<string, T>) => {
+      const saved = res[c.noun];
+      // Server copy wins only if nothing newer is queued locally.
+      queryClient.setQueryData<T[]>(LIST, (list) => {
+        const cur = list?.find((x) => x.id === saved.id);
+        return cur && cur.updatedAt > saved.updatedAt ? list : upsert(list, saved);
+      });
+    },
+    onError: (err: unknown) => {
+      if (isAuthError(err)) return;
+      toast(err instanceof ApiError ? err.message : "Couldn't save your changes. They'll stay on this device.");
+      queryClient.invalidateQueries({ queryKey: LIST });
+    },
   });
+
+  queryClient.setMutationDefaults(DELETE, {
+    mutationFn: ({ id }: DeleteVars) => api<void>(`/api/${plural}/${id}`, { method: 'DELETE' }),
+    onMutate: async ({ id }: DeleteVars) => {
+      await queryClient.cancelQueries({ queryKey: LIST });
+      queryClient.setQueryData<T[]>(LIST, (list) => remove(list, id));
+    },
+    onError: (err: unknown) => {
+      if (isAuthError(err)) return;
+      toast(`Couldn't delete that ${c.noun}.`);
+      queryClient.invalidateQueries({ queryKey: LIST });
+    },
+  });
+
+  const useList = (enabled = true) =>
+    useQuery({
+      queryKey: LIST,
+      queryFn: async () => applyPending((await api<Record<string, T[]>>(`/api/${plural}`))[plural].sort(byUpdated)),
+      enabled,
+    });
+
+  return {
+    LIST,
+    useList,
+    useOne(id: string) {
+      const q = useList();
+      return { ...q, item: q.data?.find((d) => d.id === id) };
+    },
+    /** Put a document in the cache right now (e.g. before navigating to it). */
+    prime: (d: T) => queryClient.setQueryData<T[]>(LIST, (list) => upsert(list, d)),
+    /** Saves run one at a time, in order. */
+    useSave: () => useMutation<Record<string, T>, unknown, T>({ mutationKey: SAVE, scope }),
+    useDelete: () => useMutation<void, unknown, DeleteVars>({ mutationKey: DELETE, scope }),
+  };
 }
 
+const recipes = collection<Recipe>({
+  noun: 'recipe',
+  body: (r) => ({ kind: r.kind, name: r.name, settings: r.settings, createdAt: r.createdAt, updatedAt: r.updatedAt }),
+});
+
+const toppings = collection<Topping>({
+  noun: 'topping',
+  body: (t) => ({ name: t.name, data: t.data, createdAt: t.createdAt, updatedAt: t.updatedAt }),
+});
+
+export const RECIPES = recipes.LIST;
+export const TOPPINGS = toppings.LIST;
+
+export const useRecipes = recipes.useList;
+export const primeRecipe = recipes.prime;
+export const useSaveRecipe = recipes.useSave;
+export const useDeleteRecipe = recipes.useDelete;
 export function useRecipe(id: string) {
-  const q = useRecipes();
-  return { ...q, recipe: q.data?.find((r) => r.id === id) };
+  const { item, ...q } = recipes.useOne(id);
+  return { ...q, recipe: item };
 }
 
-/** Saves for the same recipe run one at a time, in order. */
-export function useSaveRecipe() {
-  return useMutation<{ recipe: Recipe }, unknown, Recipe>({ mutationKey: SAVE, scope: { id: 'recipes' } });
-}
-
-export function useDeleteRecipe() {
-  return useMutation<void, unknown, DeleteVars>({ mutationKey: DELETE, scope: { id: 'recipes' } });
+export const useToppings = toppings.useList;
+export const primeTopping = toppings.prime;
+export const useSaveTopping = toppings.useSave;
+export const useDeleteTopping = toppings.useDelete;
+export function useTopping(id: string) {
+  const { item, ...q } = toppings.useOne(id);
+  return { ...q, topping: item };
 }
 
 export function useQc() {

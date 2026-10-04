@@ -136,7 +136,7 @@ export type Calc = {
   flour: number;
   water: number;
   pre: { flour: number; water: number; yeast: number; total: number };
-  final: { flour: number; water: number; salt: number; oil: number; yeast: number };
+  final: { flour: number; water: number; salt: number; oil: number; sugar: number; yeast: number };
   /** Flours are set separately for the preferment and the final dough. */
   split: boolean;
   flours: FlourLine[];
@@ -197,6 +197,7 @@ export function calc(kind: Kind, s: Settings): Calc {
   const hyd = s.hyd / 100;
   const salt = s.salt / 100;
   const oil = s.oil / 100;
+  const sugar = s.sugar / 100;
   const bp = Math.min(Math.max(s.bp, 0), 100) / 100;
   const bh = (kind === 'poolish' ? 100 : s.bh) / 100;
   const finalIdy = s.fy * roomFactor(s.room);
@@ -204,7 +205,7 @@ export function calc(kind: Kind, s: Settings): Calc {
   const preIdy = (m.idy(temp, hours) * (1 + s.boost / 100)) / 100;
 
   const dough = s.balls * s.bw * (1 + s.waste / 100);
-  const FL = dough / (1 + hyd + salt + oil + fy + preIdy * bp);
+  const FL = dough / (1 + hyd + salt + oil + sugar + fy + preIdy * bp);
   const bF = FL * bp;
   const bW = bF * bh;
   const bY = bF * preIdy;
@@ -212,6 +213,7 @@ export function calc(kind: Kind, s: Settings): Calc {
   const fW = FL * hyd - bW;
   const fS = FL * salt;
   const fO = FL * oil;
+  const fSu = FL * sugar;
   const fY = FL * fy;
 
   const split = s.split && s.flours.length > 1;
@@ -264,7 +266,7 @@ export function calc(kind: Kind, s: Settings): Calc {
     flour: FL,
     water: FL * hyd,
     pre: { flour: bF, water: bW, yeast: bY, total: bF + bW + bY },
-    final: { flour: fF, water: fW, salt: fS, oil: fO, yeast: fY },
+    final: { flour: fF, water: fW, salt: fS, oil: fO, sugar: fSu, yeast: fY },
     split,
     flours,
     mixWater,

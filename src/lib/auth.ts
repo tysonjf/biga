@@ -1,6 +1,6 @@
 import { createAuthClient } from 'better-auth/client';
 import { useQuery } from '@tanstack/react-query';
-import { queryClient, SESSION, RECIPES } from './query';
+import { queryClient, SESSION, RECIPES, TOPPINGS } from './query';
 import { api } from './api';
 
 export const authClient = createAuthClient({ basePath: '/api/auth' });
@@ -25,9 +25,9 @@ export function useSession() {
 
 export function setSignedIn(user: SessionUser) {
   const prev = queryClient.getQueryData<SessionUser | null>(SESSION);
-  if (prev && prev.id !== user.id) queryClient.removeQueries({ queryKey: RECIPES });
+  if (prev && prev.id !== user.id) for (const queryKey of [RECIPES, TOPPINGS]) queryClient.removeQueries({ queryKey });
   queryClient.setQueryData(SESSION, user);
-  queryClient.invalidateQueries({ queryKey: RECIPES });
+  for (const queryKey of [RECIPES, TOPPINGS]) queryClient.invalidateQueries({ queryKey });
 }
 
 export async function signOut() {
