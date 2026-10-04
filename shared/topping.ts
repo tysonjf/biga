@@ -41,9 +41,9 @@ export type Topping = {
 
 export const TOPPING_LIMITS = {
   name: 60,
-  itemName: 80,
+  itemName: 120,
   unit: 16,
-  note: 80,
+  note: 120,
   items: 30,
   steps: 20,
   step: 500,

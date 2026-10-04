@@ -67,6 +67,17 @@ describe('topping data', () => {
     expect(s).toBe('San Marzano tomatoes · Fior di latte');
   });
 
+  it('leads with what sets a pizza apart', () => {
+    const s = summary([
+      { name: 'Peeled San Marzano tomatoes, hand-crushed', qty: 75, unit: 'g', when: 'base', note: '' },
+      { name: 'Fior di latte, drained', qty: 80, unit: 'g', when: 'top', note: '' },
+      { name: 'Salame piccante (Napoli), sliced', qty: 45, unit: 'g', when: 'top', note: '' },
+      { name: 'Fresh basil', qty: 3, unit: 'leaf', when: 'top', note: '' },
+      { name: 'chilli oil', qty: 3, unit: 'g', when: 'finish', note: '' },
+    ]);
+    expect(s).toBe('Salame piccante · Chilli oil');
+  });
+
   it('searches names and ingredients, ignoring accents and case', () => {
     const t = { name: 'Patate e Rosmarino', items: [{ name: 'Yukon Gold potato', qty: 1, unit: '', when: 'top' as const, note: '' }] };
     expect(matches('potato', t)).toBe(true);

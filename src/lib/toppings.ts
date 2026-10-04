@@ -103,13 +103,18 @@ export function amount(i: Pick<Item, 'qty' | 'unit'>, n = 1): string {
 /* ---------- lists and search ---------- */
 
 const PLAIN = /^(fine |sea |flaky |coarse )*salt\b|olive oil|\bevoo\b/i;
+// On most pizzas these say nothing about what makes this one different.
+const COMMON = /\b(tomato(es)?|san marzano|passata|fior di latte|basil|oregano|black pepper)\b/i;
+const ADJECTIVES = /^((peeled|fresh|dried|raw|sliced|thinly sliced|grated|finely grated|crushed|ripe|whole)\s+)+/i;
 
-/** The main ingredients, short: "San Marzano tomatoes · Fior di latte · Basil". */
+/** What sets a pizza apart, short: "Salame piccante · Gaeta black olives · Chilli oil". */
 export function summary(items: Item[]): string {
-  return items
-    .map((i) => i.name.split(/[,(]/)[0].trim())
-    .filter((n) => n && !PLAIN.test(n))
-    .join(' · ');
+  const names = items
+    .map((i) => i.name.split(/[,(]/)[0].trim().replace(ADJECTIVES, ''))
+    .map((n) => n.charAt(0).toUpperCase() + n.slice(1))
+    .filter((n) => n && !PLAIN.test(n));
+  const special = names.filter((n) => !COMMON.test(n));
+  return (special.length >= 2 ? special : names).join(' · ');
 }
 
 export const fold = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();

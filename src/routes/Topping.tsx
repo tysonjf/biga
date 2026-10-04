@@ -281,7 +281,6 @@ function OwnTopping({ topping }: { topping: Topping }) {
       left={<BackButton />}
       right={
         <>
-          {editing ? null : <ExpandButton onClick={() => setFull(true)} />}
           <button type="button" className="nav-btn text" onClick={() => (editing ? done() : setEditing(true))}>
             {editing ? 'Done' : 'Edit'}
           </button>
