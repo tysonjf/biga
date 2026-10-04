@@ -1,12 +1,10 @@
-import { createRootRoute, createRoute, createRouter, Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router';
 import { useSession } from './lib/auth';
 import { useOnline, usePwaState, applyUpdate, dismissUpdate } from './lib/pwa';
 import { useToast, dismiss } from './lib/toast';
 import { RecipesPage } from './routes/Recipes';
 import { EditorPage } from './routes/Editor';
 import { SettingsPage } from './routes/Settings';
-import { ToppingsPage } from './routes/Toppings';
-import { ToppingPage } from './routes/Topping';
 import { AuthPage } from './routes/Auth';
 import { DoughBall } from './components/DoughBall';
 import { Icon } from './components/Icon';
@@ -130,12 +128,17 @@ const indexRoute = createRoute({
 
 const recipeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/r/$id', component: EditorPage });
 
-const toppingsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/toppings', component: ToppingsPage });
+// The toppings pages carry the recipe collection, so they load on first visit (and are precached for offline).
+const toppingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/toppings',
+  component: lazyRouteComponent(() => import('./routes/Toppings'), 'ToppingsPage'),
+});
 
 const toppingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/toppings/$id',
-  component: ToppingPage,
+  component: lazyRouteComponent(() => import('./routes/Topping'), 'ToppingPage'),
   validateSearch: (s: Record<string, unknown>): { edit?: true } => (s.edit === true || s.edit === 'true' ? { edit: true } : {}),
 });
 

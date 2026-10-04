@@ -62,6 +62,8 @@ const PLURALS: Record<string, string> = {
   half: 'halves',
   quarter: 'quarters',
   link: 'links',
+  cube: 'cubes',
+  scallion: 'scallions',
 };
 
 export function plural(unit: string, v: number): string {
@@ -102,7 +104,7 @@ export function amount(i: Pick<Item, 'qty' | 'unit'>, n = 1): string {
 
 /* ---------- lists and search ---------- */
 
-const PLAIN = /^(fine |sea |flaky |coarse )*salt\b|olive oil|\bevoo\b/i;
+const PLAIN = /^(fine |sea |flaky |coarse )*salt\b|olive oil|\bevoo\b|sunflower|peanut oil/i;
 // On most pizzas these say nothing about what makes this one different.
 const COMMON = /\b(tomato(es)?|san marzano|passata|fior di latte|basil|oregano|black pepper)\b/i;
 const ADJECTIVES = /^((peeled|fresh|dried|raw|sliced|thinly sliced|grated|finely grated|crushed|ripe|whole)\s+)+/i;
