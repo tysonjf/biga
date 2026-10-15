@@ -195,10 +195,11 @@ function BakeEditor({ bake, recipe }: { bake: Bake; recipe: Recipe | undefined }
               placeholder="How did it go? Rise, temperatures, what to change next time…"
               empty=""
               order={3}
+              vars={d.scope}
             />
             {recipe?.notes?.trim() ? (
               <Fold id="recipe-notes" title="Recipe notes" summary={`From ${recipe.name}`} open={methodOpen} onToggle={setMethodOpen} order={4}>
-                <NotesText value={recipe.notes} onChange={() => {}} editable={false} placeholder="" label="Recipe notes" />
+                <NotesText value={recipe.notes} onChange={() => {}} editable={false} placeholder="" label="Recipe notes" vars={d.scope} />
               </Fold>
             ) : null}
             <YeastCard d={d} order={5} />

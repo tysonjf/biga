@@ -112,6 +112,21 @@ export function waterTemp(p: {
   return { water, ice, tooHot: water > WATER_MAX };
 }
 
+/* ---------- biga water: Giorilli's rule ---------- */
+
+// Piergiorgio Giorilli's rule for mixing a biga: water = 55 − (room + flour), in °C. It lands a
+// stiff biga, mixed just until there's no dry flour, at about 18–20 °C.
+export const GIORILLI_BASE = 55;
+/** Below this the rule asks for colder water than a tap or a fridge gives. */
+export const ICE_WATER = 2;
+
+export type BigaWater = { water: number; room: number; flour: number; cold: boolean; tooHot: boolean };
+
+export function giorilli(room: number, flour: number): BigaWater {
+  const water = GIORILLI_BASE - (room + flour);
+  return { water, room, flour, cold: water < ICE_WATER, tooHot: water > WATER_MAX };
+}
+
 /* ---------- recipe ---------- */
 
 export type Line = { name: string; sub?: string; grams: number; small?: boolean };
@@ -142,6 +157,8 @@ export type Calc = {
   /** Flours are set separately for the preferment and the final dough. */
   split: boolean;
   flours: FlourLine[];
+  /** Water for mixing the biga itself (Giorilli); null for a poolish. */
+  bigaWater: BigaWater | null;
   mixWater: WaterTemp | null;
   warnings: string[];
 };
@@ -271,9 +288,31 @@ export function calc(kind: Kind, s: Settings): Calc {
     final: { flour: fF, water: fW, salt: fS, oil: fO, sugar: fSu, yeast: fY },
     split,
     flours,
+    bigaWater: kind === 'biga' ? giorilli(s.room, s.flourT) : null,
     mixWater,
     warnings,
   };
+}
+
+export type DoughVar = { name: string; value: number; unit: string };
+
+/**
+ * The recipe's amounts by name, for sums in the calculator and the notes ("flour × 2% ="). Grams
+ * are whole, as the Recipe card shows them, so a sum agrees with what's on screen.
+ */
+export function doughVars(kind: Kind, s: Settings, c: Calc): DoughVar[] {
+  const g = (name: string, v: number) => ({ name, value: Math.round(v), unit: 'g' });
+  return [
+    g('flour', c.flour),
+    g('water', c.water),
+    g(kind, c.pre.total),
+    g('salt', c.final.salt),
+    g('oil', c.final.oil),
+    g('sugar', c.final.sugar),
+    g('dough', c.dough),
+    { name: 'balls', value: s.balls, unit: '' },
+    { name: 'hydration', value: s.hyd, unit: '%' },
+  ];
 }
 
 /* ---------- timeline ---------- */

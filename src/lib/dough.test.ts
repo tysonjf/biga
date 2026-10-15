@@ -7,6 +7,8 @@ import {
   calc,
   clockChange,
   describeClockChange,
+  doughVars,
+  giorilli,
   MODELS,
   nextAt,
   planStart,
@@ -204,6 +206,34 @@ describe('water temperature', () => {
     expect(w.water).toBeLessThan(2);
     expect(w.ice).toBeGreaterThan(0);
     expect(w.ice).toBeLessThanOrEqual(150);
+  });
+});
+
+describe("biga water: Giorilli's rule", () => {
+  it('is 55 − (room + flour)', () => {
+    expect(giorilli(21, 21).water).toBe(13);
+    expect(giorilli(25, 22).water).toBe(8);
+  });
+
+  it('works it out for a biga from its room and flour temperatures, not for a poolish', () => {
+    expect(calc('biga', biga({ room: 24, flourT: 20 })).bigaWater).toMatchObject({ water: 11, cold: false, tooHot: false });
+    expect(calc('poolish', poolish()).bigaWater).toBeNull();
+  });
+
+  it('asks for iced water in a hot kitchen and warns about hot water in a cold one', () => {
+    expect(giorilli(30, 28)).toMatchObject({ water: -3, cold: true });
+    expect(giorilli(8, 6)).toMatchObject({ water: 41, tooHot: true });
+  });
+});
+
+describe('recipe amounts by name', () => {
+  it('names the amounts in whole grams, as the Recipe card shows them', () => {
+    const s = biga({ oil: 2 });
+    const c = calc('biga', s);
+    const v = Object.fromEntries(doughVars('biga', s, c).map((x) => [x.name, x.value]));
+    expect(v).toMatchObject({ flour: Math.round(c.flour), water: Math.round(c.water), biga: Math.round(c.pre.total), oil: Math.round(c.final.oil) });
+    expect(v).toMatchObject({ balls: 4, hydration: 72 });
+    expect(Object.keys(Object.fromEntries(doughVars('poolish', poolish(), calc('poolish', poolish())).map((x) => [x.name, 1])))).toContain('poolish');
   });
 });
 

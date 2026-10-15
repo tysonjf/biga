@@ -15,6 +15,10 @@ An installable app (PWA) for planning biga and poolish pizza doughs to the hour.
 - **Recipes and bakes open locked**, so a stray tap while scrolling can't change the amounts. Tap **Edit** to unlock and **Done** to lock again. Some things stay usable while locked, because they aren't the recipe's ratios: when you'll mix, the yeast chart (ferment temperature × time), which are scheduling, and the notes.
 - **The playground** is a free calculator, one for biga and one for poolish. It saves as you go and never changes your recipes. **Save as recipe** turns it into a recipe.
 - **Notes** (a recipe's notes, a bake's notes) are rich text: headings, numbered steps, bullets and checklists. They're stored as Markdown. The editor loads only on recipe and bake pages.
+  - **Sums in the notes:** end a line with `=` and the answer shows after it, worked out live: `4 x 280 =` shows 1120. The answer isn't saved into the text, so it keeps up when you change the sum or the recipe. A line with an answer already typed after the `=` is left alone.
+  - Sums can use the recipe's amounts by name, in whole grams as the Recipe card shows them: `flour`, `water`, `biga` or `poolish`, `salt`, `oil`, `sugar`, `dough`, `balls` and `hydration` (a percentage, so `flour × hydration%`). `Salt: flour × 2.5% =` follows the recipe.
+  - `*italics*` only kick in when the stars hug the words, as in Markdown, so `2 * 4 * 3` stays a sum.
+- **The calculator** sits at the bottom of a recipe: a keypad, the answer as you type, and your last few sums (tap one to use its answer). It knows the same names as the notes; tap an amount to put it in. Percent works like a phone calculator: `500 + 10%` is 550.
 - **Toppings** is the second tab: researched recipes for the Italian classics (red and white) and celebrated contemporary pizzas, scaled to however many pizzas you're making, plus your own topping recipes, written from scratch or copied from a classic and changed.
 
 - **Frontend:** React SPA (Vite, TanStack Router + Query). Optimistic updates, autosave, works offline.
@@ -95,7 +99,8 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
 - **Oil and sugar:** both are a percentage of the total flour and go into the final mix. Like salt, they're on top of the hydration, which counts water only.
   - A little sugar (1–2%) helps a home oven brown the crust, and keeps an all-biga dough from coming out pale after a long fridge rest.
 - **Dough temperature:** the ball timings assume the dough comes off the mixer at 24–26 °C and the balls proof in an 18–24 °C room.
-  - The water temperature comes from a mass-weighted energy balance across preferment, flour, water and mixer heat.
+  - **Biga water** uses Giorilli's rule: water = 55 − (room + flour), in °C, which lands a biga at about 18–20 °C. At a 21 °C room and 21 °C flour that's 13 °C. When the rule asks for less than 2 °C the app says to use iced water; above 38 °C it warns, since the yeast goes straight into that water.
+  - The final dough's water temperature comes from a mass-weighted energy balance across preferment, flour, water and mixer heat.
   - The classic "×4" rule of thumb gets it wrong when most of the water is already in a stiff biga.
   - When the water would need to be below 2 °C, the app gives an ice amount instead.
   - It warns above 38 °C, because that water lands directly on live yeast.
@@ -135,7 +140,8 @@ pnpm build && pnpm preview   # production build, service worker included
 
 ```
 src/            React app: routes/ (home, recipe, bake, playground, toppings), components/ (Dough.tsx holds
-                the calculator cards every page shares), lib/ (dough maths, toppings, query + offline cache, auth client)
+                the calculator cards every page shares; Calculator.tsx the keypad; NotesMath.ts the sums in notes),
+                lib/ (dough maths, math.ts for sums, toppings, query + offline cache, auth client)
 shared/         recipe, bake, playground and topping types + validation, used by app and Worker
 worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts, bakes.ts, playground.ts, toppings.ts
 migrations/     D1 schema. 0003_bakes adds bakes and the playground, and turns any recipe start time from the

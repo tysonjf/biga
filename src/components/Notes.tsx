@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import type { Kind } from '../../shared/recipe';
+import type { Vars } from '../lib/math';
 import { mobileOrder } from './Fold';
 import type { NotesEditorProps } from './NotesEditor';
 
@@ -27,9 +28,11 @@ type Props = {
   /** Offered while the notes are empty and editable. */
   template?: string;
   order?: number;
+  /** Amounts the notes' sums can use by name. */
+  vars?: Vars;
 };
 
-export function NotesCard({ id, title, hint, value, onChange, editable, placeholder, empty, template, order }: Props) {
+export function NotesCard({ id, title, hint, value, onChange, editable, placeholder, empty, template, order, vars }: Props) {
   const blank = !value.trim();
   return (
     <section className="card notes-card" id={id} aria-labelledby={`h-${id}`} style={mobileOrder(order)}>
@@ -41,7 +44,7 @@ export function NotesCard({ id, title, hint, value, onChange, editable, placehol
         {blank && !editable ? (
           <p className="note">{empty}</p>
         ) : (
-          <NotesText value={value} onChange={onChange} editable={editable} placeholder={placeholder} label={title} />
+          <NotesText value={value} onChange={onChange} editable={editable} placeholder={placeholder} label={title} vars={vars} />
         )}
       </div>
       {blank && editable && template ? (

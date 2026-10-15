@@ -10,6 +10,7 @@ import {
   calc,
   clockChange,
   describeClockChange,
+  doughVars,
   fmtClock,
   fmtDay,
   fmtDur,
@@ -29,6 +30,7 @@ import {
   toLocalInput,
   WATER_MAX,
   type BakeStatus,
+  type BigaWater,
   type Calc,
   type Timeline,
 } from '../lib/dough';
@@ -53,7 +55,10 @@ export function useDough(kind: Kind, s: Settings, setS: SetS, start: Date | null
   const tl = useMemo(() => (start ? timeline(kind, s, start) : null), [kind, s, start]);
   const set = useCallback(<K extends keyof Settings>(k: K, v: Settings[K]) => setS((p) => ({ ...p, [k]: v })), [setS]);
   const stageList = useMemo(() => stages(kind, s, c, live ? null : tl), [kind, s, c, tl, live]);
-  return { kind, s, setS, set, c, tl, start, live, stages: stageList };
+  // The amounts by name, for sums in the calculator and the notes.
+  const vars = useMemo(() => doughVars(kind, s, c), [kind, s, c]);
+  const scope = useMemo(() => Object.fromEntries(vars.map((v) => [v.name, v.value])), [vars]);
+  return { kind, s, setS, set, c, tl, start, live, stages: stageList, vars, scope };
 }
 export type Dough = ReturnType<typeof useDough>;
 
@@ -276,6 +281,7 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
   const m = c.model;
   return (
     <Fold title="Dough temperature" summary={waterSummary(c)} open={open} onToggle={setOpen} order={order}>
+      {c.bigaWater ? <BigaWaterResult w={c.bigaWater} /> : null}
       <WaterResult c={c} s={s} />
       <div className="grid">
         <Field d={d} k="ddt" />
@@ -303,7 +309,7 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
         <b>
           {ROOM_MIN}–{ROOM_MAX} °C
         </b>{' '}
-        room. Hitting the dough temperature matters most. The water temperature counts the {m.name.toLowerCase()} at its {c.temp} °C
+        room. Hitting the dough temperature matters most. The final dough water counts the {m.name.toLowerCase()} at its {c.temp} °C
         ferment temperature; check it with a probe if you can.
       </p>
       {s.room > ROOM_MAX ? (
@@ -484,6 +490,7 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
     });
   const w = c.mixWater;
   const waterSub = w ? (w.ice ? `${Math.round(w.ice)} g of it as ice` : `at ${Math.round(w.water)} °C`) : undefined;
+  const preWaterAt = c.bigaWater ? bigaWaterShort(c.bigaWater) : undefined;
   return [
     {
       key: 'pre',
@@ -491,7 +498,12 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
       when: tl ? `Mix ${fmtDay(tl.steps[0].at)}` : undefined,
       items: [
         ...flourItems('pre'),
-        { n: 'Water', sub: `${kind === 'poolish' ? 100 : num(s.bh, 0)}% of ${pre} flour`, g: g0(c.pre.water) },
+        {
+          n: 'Water',
+          sub: `${kind === 'poolish' ? 100 : num(s.bh, 0)}% of ${pre} flour` + (preWaterAt ? ` · ${preWaterAt}` : ''),
+          tag: preWaterAt,
+          g: g0(c.pre.water),
+        },
         { n: 'Instant dry yeast', short: 'Yeast', tag: 'IDY', sub: `${idyPct(c.preIdy)} · ${c.hours} h at ${c.temp} °C`, g: g1(c.pre.yeast) },
         { n: `Total ${pre}`, g: g0(c.pre.total), sum: true },
       ],
@@ -546,8 +558,43 @@ function RecipeLists({ stages }: { stages: Stage[] }) {
 
 function waterSummary(c: Calc) {
   const w = c.mixWater;
-  if (!w) return undefined;
-  return w.ice ? `Water ${Math.round(w.ice)} g ice` : `Water ${Math.round(w.water)} °C`;
+  const fin = w ? (w.ice ? `${Math.round(w.ice)} g ice` : `${Math.round(w.water)} °C`) : null;
+  if (!c.bigaWater) return fin ? `Water ${fin}` : undefined;
+  const pre = c.bigaWater.cold ? 'ice-cold' : `${Math.round(c.bigaWater.water)} °C`;
+  return fin ? `Water: biga ${pre} · final ${fin}` : `Biga water ${pre}`;
+}
+
+/** The biga's water as the ingredient lists show it: "at 13 °C" or "ice-cold". */
+const bigaWaterShort = (b: BigaWater) => (b.cold ? 'ice-cold' : `at ${Math.round(b.water)} °C`);
+
+/** Water for mixing the biga itself, by Giorilli's rule: 55 − (room + flour). */
+function BigaWaterResult({ w }: { w: BigaWater }) {
+  const sum = (
+    <>
+      55 − ({w.room} °C room + {w.flour} °C flour) = {Math.round(w.water)} °C
+    </>
+  );
+  return (
+    <div className={'water' + (w.cold ? ' cold' : w.tooHot ? ' hot' : '')}>
+      <div className="water-main">
+        <span className="k">Biga water</span>
+        <span className="v">{w.cold ? 'Ice-cold' : `${Math.round(w.water)} °C`}</span>
+      </div>
+      <p>
+        {w.cold ? (
+          <>
+            Giorilli's rule asks for {sum}, colder than water gets. Use iced water and chill the flour if you can.
+          </>
+        ) : w.tooHot ? (
+          <>
+            Giorilli's rule: {sum}. Keep it under {WATER_MAX} °C, since the yeast goes straight into this water. Warm the flour instead.
+          </>
+        ) : (
+          <>Giorilli's rule: {sum}. It lands the biga at about 18–20 °C.</>
+        )}
+      </p>
+    </div>
+  );
 }
 
 function WaterResult({ c, s }: { c: Calc; s: Settings }) {

@@ -9,6 +9,7 @@ import { useDebouncedEffect } from '../lib/useDebounced';
 import { useNow } from '../lib/useNow';
 import { useStoredFlag } from '../lib/useStoredFlag';
 import { BakeRow } from '../components/BakeRow';
+import { CalculatorCard } from '../components/Calculator';
 import { doughSummary, DoughCard, HowCard, JumpNav, RecipeCard, TempFold, TimingFold, useDough, usePlanStart, YeastCard } from '../components/Dough';
 import { Icon } from '../components/Icon';
 import { IngredientsView } from '../components/IngredientsView';
@@ -58,6 +59,7 @@ const SECTIONS = [
   { id: 'recipe', label: 'Recipe' },
   { id: 'notes', label: 'Notes' },
   { id: 'timing', label: 'Timing' },
+  { id: 'calc', label: 'Calculator' },
 ] as const;
 
 const byStart = (a: Bake, b: Bake) => (b.start || '').localeCompare(a.start || '') || b.createdAt - a.createdAt;
@@ -174,7 +176,10 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
               empty=""
               template={METHOD_TEMPLATE[kind]}
               order={4}
+              vars={d.scope}
             />
+            {/* Last on a phone; under the notes on a computer. */}
+            <CalculatorCard vars={d.vars} scope={d.scope} order={9} />
           </div>
           <div className="col sticky">
             <RecipeCard d={d} onFull={() => setCook(true)} order={3} />

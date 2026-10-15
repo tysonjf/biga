@@ -7,6 +7,8 @@ import StarterKit from '@tiptap/starter-kit';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Placeholder } from '@tiptap/extensions';
 import { Markdown } from '@tiptap/markdown';
+import type { Vars } from '../lib/math';
+import { MathSafeItalic, NotesMath, refreshMath } from './NotesMath';
 
 export type NotesEditorProps = {
   value: string;
@@ -14,26 +16,32 @@ export type NotesEditorProps = {
   editable: boolean;
   placeholder: string;
   label: string;
+  /** The recipe's amounts, for sums in the notes ("flour × 2% ="). */
+  vars?: Vars;
 };
 
-export default function NotesEditor({ value, onChange, editable, placeholder, label }: NotesEditorProps) {
+export default function NotesEditor({ value, onChange, editable, placeholder, label, vars }: NotesEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const varsRef = useRef<Vars>(vars ?? {});
   // The Markdown the editor holds, so a new `value` can be told apart from our own edits coming back.
   const last = useRef(value);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [2, 3] },
+        italic: false,
         code: false,
         codeBlock: false,
         horizontalRule: false,
         link: { openOnClick: true, autolink: true, linkOnPaste: true, defaultProtocol: 'https' },
       }),
+      MathSafeItalic,
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder }),
       Markdown,
+      NotesMath.configure({ vars: () => varsRef.current }),
     ],
     content: value,
     contentType: 'markdown',
@@ -50,6 +58,13 @@ export default function NotesEditor({ value, onChange, editable, placeholder, la
   useEffect(() => {
     if (editor.isEditable !== editable) editor.setEditable(editable, false);
   }, [editor, editable]);
+
+  // New amounts (the recipe changed): work the sums out again. Not an edit, and not undoable.
+  const varsKey = JSON.stringify(vars ?? {});
+  useEffect(() => {
+    varsRef.current = JSON.parse(varsKey);
+    if (!editor.isDestroyed) editor.view.dispatch(refreshMath(editor.state));
+  }, [editor, varsKey]);
 
   // Text replaced from outside (a template): load it without reporting it back as an edit.
   useEffect(() => {
