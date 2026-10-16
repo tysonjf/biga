@@ -63,7 +63,9 @@ export const roomFactor = (room: number) => (room > ROOM_MAX ? Math.pow(2, -(roo
 const C_FLOUR = 1.6;
 const C_WATER = 4.18;
 const L_ICE = 334;
-export const FRIDGE_WATER = 4;
+/** A fridge, °C: for chilled water, and a preferment held back in it. */
+export const FRIDGE = 4;
+export const FRIDGE_WATER = FRIDGE;
 
 // Real temperature rise of the dough during the final mix (not the ×3/×4 "friction factor").
 export const MIXERS = [
@@ -147,6 +149,8 @@ export type Calc = {
   hours: number;
   /** Preferment IDY as a fraction of preferment flour, boost included. */
   preIdy: number;
+  /** The preferment's temperature going into the final mix: as set, or its ferment temperature. */
+  preTemp: number;
   /** Final IDY as % of total flour after the room adjustment. */
   finalIdy: number;
   dough: number;
@@ -249,7 +253,7 @@ export function calc(kind: Kind, s: Settings): Calc {
   const mixWater = waterTemp({
     preFlour: bF,
     preWater: bW,
-    preTemp: temp,
+    preTemp: s.preT ?? temp,
     flour: Math.max(fF, 0),
     flourT: s.flourT,
     water: Math.max(fW, 0),
@@ -280,6 +284,7 @@ export function calc(kind: Kind, s: Settings): Calc {
     temp,
     hours,
     preIdy,
+    preTemp: s.preT ?? temp,
     finalIdy,
     dough,
     flour: FL,

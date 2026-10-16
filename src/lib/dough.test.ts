@@ -201,6 +201,30 @@ describe('water temperature', () => {
     expect(waterTemp({ ...base, preTemp: 4 })!.water).toBeGreaterThan(waterTemp(base)!.water + 10);
   });
 
+  it('counts the preferment at its ferment temperature unless told otherwise', () => {
+    const c = calc('biga', biga());
+    expect(c.preTemp).toBe(18);
+    const same = calc('biga', biga({ preT: 18 }));
+    expect(same.mixWater!.water).toBeCloseTo(c.mixWater!.water, 9);
+  });
+
+  it('needs warmer water for a biga held back in the fridge, cooler for one left out', () => {
+    const asFermented = calc('biga', biga()).mixWater!.water;
+    const fridge = calc('biga', biga({ preT: 4 }));
+    const room = calc('biga', biga({ preT: 24 })).mixWater!.water;
+    expect(fridge.preTemp).toBe(4);
+    expect(fridge.mixWater!.water).toBeGreaterThan(asFermented + 10);
+    expect(room).toBeLessThan(asFermented);
+    // Still lands on the target: the energy balance round-trip with the cold biga.
+    const s = biga({ preT: 4 });
+    const w = fridge.mixWater!.water;
+    const cPre = fridge.pre.flour * 1.6 + fridge.pre.water * 4.18;
+    const cFlour = fridge.final.flour * 1.6;
+    const cWater = fridge.final.water * 4.18;
+    const mixed = (cPre * 4 + cFlour * s.flourT + cWater * w) / (cPre + cFlour + cWater) + s.friction;
+    expect(mixed).toBeCloseTo(s.ddt, 6);
+  });
+
   it('asks for ice in a hot kitchen with a fast mixer', () => {
     const w = waterTemp({ ...base, preTemp: 28, flourT: 32, friction: 8, water: 150 })!;
     expect(w.water).toBeLessThan(2);
@@ -344,6 +368,13 @@ describe('planned start', () => {
 });
 
 describe('normalise', () => {
+  it('keeps the preferment temperature at mixing in range, unset by default', () => {
+    expect(normalise('biga', {}).preT).toBeNull();
+    expect(normalise('biga', { preT: 4 }).preT).toBe(4);
+    expect(normalise('biga', { preT: 99 }).preT).toBe(40);
+    expect(normalise('poolish', { preT: 'cold' }).preT).toBeNull();
+  });
+
   it('keeps a valid planned start and drops junk', () => {
     expect(normalise('biga', { plan: '2026-10-10T17:00' }).plan).toBe('2026-10-10T17:00');
     expect(normalise('biga', { plan: 'tomorrow' }).plan).toBe('');

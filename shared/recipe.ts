@@ -38,6 +38,11 @@ export type Settings = {
   room: number; // room temperature where the dough is mixed and the balls proof, °C
   flourT: number; // flour temperature, °C
   friction: number; // temperature rise from mixing, °C
+  /**
+   * The preferment's temperature as it goes into the final mix, °C. null = its ferment temperature.
+   * Set when it was held back in the fridge, or left out once it was ready.
+   */
+  preT: number | null;
   fridge: boolean; // bake later: short room rest, then the balls go in the fridge
   fridgeRest: number; // room rest before the fridge, min
   fridgeH: number; // hours in the fridge
@@ -80,6 +85,9 @@ export const FIELDS: Record<NumKey, Field> = {
   temper: { label: 'Out before baking', unit: 'min', step: 15, min: 0, max: 360, dec: 0 },
 };
 
+/** The preferment's temperature at the final mix. Not in FIELDS, because it can be unset. */
+export const PRE_T: Field = { label: 'Temperature', unit: '°C', step: 1, min: 0, max: 40, dec: 0 };
+
 const COMMON = {
   balls: 4,
   bw: 280,
@@ -100,6 +108,7 @@ const COMMON = {
   room: 21,
   flourT: 21,
   friction: 5,
+  preT: null,
   fridge: false,
   fridgeRest: 60,
   fridgeH: 16,
@@ -145,6 +154,7 @@ export function normalise(kind: Kind, raw: unknown): Settings {
   }
   if (kind === 'poolish') out.bh = 100;
   else out.bh = clamp(out.bh, 40, 65);
+  if (typeof src.preT === 'number' && Number.isFinite(src.preT)) out.preT = round(clamp(src.preT, PRE_T.min, PRE_T.max), PRE_T.dec);
   if (typeof src.fridge === 'boolean') out.fridge = src.fridge;
   if (typeof src.split === 'boolean') out.split = src.split;
   if (typeof src.plan === 'string' && START_RE.test(src.plan)) out.plan = src.plan;

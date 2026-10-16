@@ -101,6 +101,7 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
 - **Dough temperature:** the ball timings assume the dough comes off the mixer at 24–26 °C and the balls proof in an 18–24 °C room.
   - **Biga water** uses Giorilli's rule: water = 55 − (room + flour), in °C, which lands a biga at about 18–20 °C. At a 21 °C room and 21 °C flour that's 13 °C. When the rule asks for less than 2 °C the app says to use iced water; above 38 °C it warns, since the yeast goes straight into that water.
   - The final dough's water temperature comes from a mass-weighted energy balance across preferment, flour, water and mixer heat.
+  - The preferment counts at its ferment temperature unless you say otherwise under **Biga (or Poolish) into the mix**: **Fridge** (4 °C) for one held back in the fridge, **Room** for one left out once it was ready, or a probed temperature. It stays usable while the recipe is locked, since it's about the day, not the recipe. A cold biga needs much warmer water, so expect the 38 °C warning: let it sit out for a while first.
   - The classic "×4" rule of thumb gets it wrong when most of the water is already in a stiff biga.
   - When the water would need to be below 2 °C, the app gives an ice amount instead.
   - It warns above 38 °C, because that water lands directly on live yeast.

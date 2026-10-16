@@ -2,7 +2,7 @@
 // own order; they read the lock from context, so a locked page shows values that can't be changed.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import { FIELDS, LIMITS, type Kind, type NumKey, type Settings } from '../../shared/recipe';
+import { FIELDS, LIMITS, PRE_T, type Kind, type NumKey, type Settings } from '../../shared/recipe';
 import {
   afterReady,
   balance,
@@ -16,6 +16,7 @@ import {
   fmtDur,
   fmtWeekday,
   g0,
+  FRIDGE,
   g1,
   MIXERS,
   nearest,
@@ -278,7 +279,6 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
   const locked = useLocked();
   // Folded by default: the ingredient amounts come first. Remembered on this device.
   const [open, setOpen] = useStoredFlag('biga-open-temp', false);
-  const m = c.model;
   return (
     <Fold title="Dough temperature" summary={waterSummary(c)} open={open} onToggle={setOpen} order={order}>
       {c.bigaWater ? <BigaWaterResult w={c.bigaWater} /> : null}
@@ -309,8 +309,7 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
         <b>
           {ROOM_MIN}–{ROOM_MAX} °C
         </b>{' '}
-        room. Hitting the dough temperature matters most. The final dough water counts the {m.name.toLowerCase()} at its {c.temp} °C
-        ferment temperature; check it with a probe if you can.
+        room. Hitting the dough temperature matters most.
       </p>
       {s.room > ROOM_MAX ? (
         <p className="tip">
@@ -326,7 +325,53 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
           <span>Below {ROOM_MIN} °C the balls will be slow. Find a warmer spot or give them longer than 2 hours.</span>
         </p>
       ) : null}
+      <PreTemp d={d} />
     </Fold>
+  );
+}
+
+/**
+ * How warm the preferment is going into the final mix, which sets the final dough's water. It isn't
+ * always the ferment temperature: held back in the fridge it comes out at about 4 °C, and left out
+ * once it was ready it's at room temperature. It's about the day, not the recipe's ratios, so it
+ * stays usable while locked.
+ */
+function PreTemp({ d }: { d: Dough }) {
+  const { s, set, c } = d;
+  const name = c.model.name;
+  const pre = name.toLowerCase();
+  const picks = [
+    { label: 'As fermented', v: null, at: c.temp },
+    { label: 'Fridge', v: FRIDGE, at: FRIDGE },
+    { label: 'Room', v: s.room, at: s.room },
+  ];
+  return (
+    <Locked.Provider value={false}>
+      <div className="sub-h">{name} into the mix</div>
+      <div className="chips" role="group" aria-label={`Where the ${pre} comes from`}>
+        {picks.map((p) => (
+          <button key={p.label} type="button" className="chip-btn" aria-pressed={s.preT === p.v} onClick={() => set('preT', p.v)}>
+            {p.label} <span>{p.at}°</span>
+          </button>
+        ))}
+      </div>
+      <div className="grid">
+        <Stepper {...PRE_T} label={`${name} temp`} value={c.preTemp} onChange={(v) => set('preT', v)} />
+      </div>
+      <p className="note">
+        {s.preT === null ? (
+          <>
+            The final dough water counts the {pre} at its <b>{c.temp} °C</b> ferment temperature. Held it back in the fridge, or left it out once it
+            was ready? Pick where it’s coming from, or probe it and set the temperature.
+          </>
+        ) : (
+          <>
+            The final dough water counts the {pre} at <b>{c.preTemp} °C</b>
+            {s.preT === FRIDGE ? ', straight from the fridge' : ''}. A probe in the middle tells you best.
+          </>
+        )}
+      </p>
+    </Locked.Provider>
   );
 }
 
@@ -513,7 +558,12 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
       title: 'Final dough',
       when: tl ? `Mix ${fmtDay(tl.ready)}` : undefined,
       items: [
-        { n: m.name, sub: kind === 'biga' ? 'all of it, torn into pieces' : 'all of it', tag: 'all of it', g: g0(c.pre.total) },
+        {
+          n: m.name,
+          sub: (kind === 'biga' ? 'all of it, torn into pieces' : 'all of it') + (s.preT === null ? '' : ` · at ${c.preTemp} °C`),
+          tag: 'all of it',
+          g: g0(c.pre.total),
+        },
         ...(c.final.flour > 0.5 ? flourItems('fin') : []),
         { n: 'Water', sub: waterSub, tag: waterSub, g: g0(Math.max(c.final.water, 0)) },
         ...(c.final.oil > 0 ? [{ n: 'Olive oil', sub: `${num(s.oil, 1)}% of flour`, g: g0(c.final.oil) }] : []),
