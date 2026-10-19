@@ -12,6 +12,7 @@ import {
   describeClockChange,
   directChart,
   doughVars,
+  noPreferment,
   FIRST_HYD,
   fmtClock,
   fmtDay,
@@ -85,7 +86,7 @@ export const doughSummary = (s: Settings, c: Calc) => `${s.balls} × ${s.bw} g �
 
 type StepperProps = Parameters<typeof Stepper>[0];
 
-function Field({ d, k, ...extra }: { d: Dough; k: NumKey } & Partial<StepperProps>) {
+export function Field({ d, k, ...extra }: { d: Dough; k: NumKey } & Partial<StepperProps>) {
   return <Stepper {...FIELDS[k]} value={d.s[k]} onChange={(v) => d.set(k, v)} {...extra} />;
 }
 
@@ -97,17 +98,11 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
   const m = c.model;
   // A direct dough's chart is its bulk ferment: when it's up, you ball the dough.
   const direct = kind === 'direct';
-  const pre = m.name.toLowerCase();
-  // The page's lock. The chart and the times are scheduling and stay usable; the yeast itself doesn't.
+  // The page's lock: the chart and the times are scheduling and stay usable; the cold ferment locks.
   const locked = useLocked();
   const [reveal, setReveal] = useState(0);
   // A direct dough's chart follows its whole schedule: the balls, and any time in the fridge.
   const chart = useMemo(() => (direct ? { ...m, idy: directChart(s) } : m), [m, direct, s]);
-  // What the chart would use, boost included: shown while you set the yeast yourself.
-  const suggested = chart.idy(c.temp, c.hours) * (1 + s.boost / 100);
-  // Going manual starts from the chart's figure, so nothing jumps.
-  const setManual = (manual: boolean) =>
-    setS((p) => ({ ...p, manual, ...(manual && !p.manual ? { idy: +(c.preIdy * 100).toFixed(3) } : {}) }));
   const onPick = useCallback((t: number, h: number) => setS((p) => ({ ...p, temp: t, hours: h })), [setS]);
   const grid = (list: number[]) => ({
     min: list[0],
@@ -123,20 +118,10 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
       <section className="card" id="yeast" aria-labelledby="h-yeast" style={mobileOrder(order)}>
         <div className="card-h">
           <h2 id="h-yeast">{m.name} yeast</h2>
-          <span className="hint">{s.manual ? 'Your own yeast. The times set the schedule.' : 'Tap a cell to pick temperature × time.'}</span>
-        </div>
-        <div className="segmented" role="tablist" aria-label="Where the yeast comes from" data-locked={locked ? '' : undefined}>
-          <button type="button" role="tab" aria-selected={!s.manual} onClick={() => !locked && setManual(false)}>
-            From the chart
-          </button>
-          <button type="button" role="tab" aria-selected={s.manual} onClick={() => !locked && setManual(true)}>
-            Manual
-          </button>
+          <span className="hint">Tap a cell to pick temperature × time.</span>
         </div>
         {planner ? <StartRow d={d} /> : null}
-        {s.manual ? null : (
-          <Heatmap model={chart} temp={c.temp} hours={c.hours} onPick={onPick} start={start} live={live} after={afterReady(kind, s)} reveal={reveal} />
-        )}
+        <Heatmap model={chart} temp={c.temp} hours={c.hours} onPick={onPick} start={start} live={live} after={afterReady(kind, s)} reveal={reveal} />
         <div className="grid">
           <Stepper
             big
@@ -163,25 +148,9 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
             }}
           />
         </div>
-        {s.manual ? (
-          <Locked.Provider value={locked}>
-            <div className="grid">
-              <Stepper {...FIELDS.idy} label={direct ? 'Yeast, % of flour' : `Yeast, % of ${pre} flour`} value={s.idy} onChange={(v) => set('idy', v)} />
-            </div>
-            <p className="note">
-              The chart would use <b>{idyPct(suggested / 100)}</b> for {c.hours} h at {c.temp} °C
-              {direct ? ' and the rest of this schedule' : ''}.{' '}
-              {locked ? null : (
-                <button type="button" className="btn small inline" onClick={() => set('idy', +suggested.toFixed(3))}>
-                  Use it
-                </button>
-              )}
-            </p>
-          </Locked.Provider>
-        ) : null}
         {direct ? <ColdFerment d={d} locked={locked} /> : null}
         <div className="stats">
-          <Stat k={s.manual ? 'IDY · manual' : s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
+          <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
           <Stat k={`${m.name} yeast`} v={g1(direct ? c.final.yeast : c.pre.yeast)} />
           {live || !tl ? (
             <>
@@ -210,23 +179,16 @@ function ColdFerment({ d, locked }: { d: Dough; locked: boolean }) {
   return (
     <Locked.Provider value={locked}>
       <div className="sub-h">Cold ferment</div>
-      <p className="note">
-        {coldBulk ? (
-          <>
-            A <b>{c.temp} °C</b> bulk is a cold bulk in the fridge. Ball it cold, then give the balls about 3–4 hours to warm up and proof.
-          </>
-        ) : (
-          <>
-            For a cold bulk, ferment it at <b>{FRIDGE_MAX} °C or colder</b>: the fridge rows on the chart. To cold ferment the balls instead, put them in
-            the fridge.
-          </>
-        )}
-      </p>
+      {coldBulk ? (
+        <p className="note">
+          A <b>{c.temp} °C</b> bulk is in the fridge. Give the balls 3–4 hours to warm up and proof.
+        </p>
+      ) : null}
       <Switch
         checked={s.fridge}
         onChange={(v) => set('fridge', v)}
         label="Balls in the fridge"
-        sub="Ball after the bulk, rest them, then hold them cold until the day. The fridge time counts toward the yeast."
+        sub="Cold bulk: a fridge row on the chart (8 °C or colder). Cold balls: this. The fridge time counts toward the yeast either way."
       />
       {s.fridge ? (
         <div className="grid">
@@ -234,7 +196,7 @@ function ColdFerment({ d, locked }: { d: Dough; locked: boolean }) {
           <Field d={d} k="fridgeT" />
         </div>
       ) : null}
-      {coldBulk && !s.fridge && s.proof < 180 ? <p className="warn">Balls from a cold bulk need about 3–4 hours to warm up and proof. Give them longer under Timing.</p> : null}
+      {coldBulk && !s.fridge && s.proof < 180 ? <p className="warn">Give the balls from a cold bulk 3–4 hours under Timing.</p> : null}
     </Locked.Provider>
   );
 }
@@ -308,15 +270,12 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
         ))}
       </div>
       {kind === 'direct' ? (
-        // The yeast boost tunes the chart; with your own yeast there's nothing to tune.
-        d.s.manual ? null : (
-          <>
-            <div className="sub-h">Yeast</div>
-            <div className="grid">
-              <Field d={d} k="boost" />
-            </div>
-          </>
-        )
+        <>
+          <div className="sub-h">Yeast</div>
+          <div className="grid">
+            <Field d={d} k="boost" />
+          </div>
+        </>
       ) : (
         <>
           <div className="sub-h">{c.model.name}</div>
@@ -333,7 +292,7 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
             <div className="fixed-val">100</div>
           </div>
         )}
-            {d.s.manual ? null : <Field d={d} k="boost" />}
+            <Field d={d} k="boost" />
             <Field d={d} k="fy" />
           </div>
         </>
@@ -406,7 +365,7 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
         room. Hitting the dough temperature matters most.
       </p>
       {/* A direct dough's yeast comes from the chart, so a hot room doesn't cut it. */}
-      {s.room > ROOM_MAX && d.kind !== 'direct' ? (
+      {s.room > ROOM_MAX && !noPreferment(d.kind) ? (
         <p className="tip">
           <Icon name="thermo" size={18} />
           <span>
@@ -420,7 +379,7 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
           <span>Below {ROOM_MIN} °C the balls will be slow. Find a warmer spot or give them longer than 2 hours.</span>
         </p>
       ) : null}
-      {d.kind === 'direct' ? null : <PreTemp d={d} />}
+      {noPreferment(d.kind) ? null : <PreTemp d={d} />}
     </Fold>
   );
 }
@@ -625,6 +584,19 @@ function Li({ n, sub, g, sum }: { n: string; sub?: string; g: string; sum?: bool
   );
 }
 
+/**
+ * The final mix's water: how warm, and for a wet dough how to hold some back. "at 23 °C · 400 g first,
+ * to 60%, then drizzle in 57 g", or `short` for the full-screen view: "at 23 °C · 400 g + 57 g".
+ */
+export function waterNote(c: Calc, short = false): string | undefined {
+  const w = c.mixWater;
+  const temp = w ? (w.ice ? `${Math.round(w.ice)} g of it as ice` : `at ${Math.round(w.water)} °C`) : '';
+  // Wet doughs: mix to 60% first, then drizzle in the rest.
+  const hb = c.holdBack;
+  const split = hb ? (short ? `${hb.first} g + ${hb.rest} g` : `${hb.first} g first, to ${FIRST_HYD}%, then drizzle in ${hb.rest} g`) : '';
+  return [temp, split].filter(Boolean).join(' · ') || undefined;
+}
+
 /** The ingredient lists, shared by the Recipe card and the full-screen view. Mix times only for a bake. */
 function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] {
   const m = c.model;
@@ -637,14 +609,10 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
       const of = !c.split ? 'the flour' : stage === 'pre' ? `the ${pre} flour` : 'the final dough flour';
       return [{ n: f.name || 'Flour', sub: c.flours.length > 1 ? `${pct}% of ${of}` : undefined, g: g0(grams) }];
     });
-  const w = c.mixWater;
-  const waterSub = w ? (w.ice ? `${Math.round(w.ice)} g of it as ice` : `at ${Math.round(w.water)} °C`) : undefined;
-  // Wet doughs: mix to 60% first, then drizzle in the rest.
-  const hb = c.holdBack;
-  const waterLine = [waterSub, hb ? `${hb.first} g first, to ${FIRST_HYD}%, then drizzle in ${hb.rest} g` : ''].filter(Boolean).join(' · ') || undefined;
-  const waterTag = [waterSub, hb ? `${hb.first} g + ${hb.rest} g` : ''].filter(Boolean).join(' · ') || undefined;
+  const waterLine = waterNote(c);
+  const waterTag = waterNote(c, true);
   const preWaterAt = c.bigaWater ? bigaWaterShort(c.bigaWater) : undefined;
-  const direct = kind === 'direct';
+  const direct = noPreferment(kind);
   const dough: Stage = {
     key: 'fin',
     title: direct ? 'Dough' : 'Final dough',
@@ -668,10 +636,12 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
       ...(c.final.yeast > 0
         ? [
             {
-              n: 'Instant dry yeast',
+              n: kind === 'manual' ? 'Yeast' : 'Instant dry yeast',
               short: 'Yeast',
-              tag: 'IDY',
-              sub: direct
+              tag: kind === 'manual' ? undefined : 'IDY',
+              sub: kind === 'manual'
+                ? `${idyPct(c.preIdy)} of flour`
+                : direct
                 ? `${idyPct(c.preIdy)} · ${c.hours} h bulk at ${c.temp} °C`
                 : c.finalIdy < s.fy
                   ? `${num(c.finalIdy, 3)}% · cut for a ${s.room} °C room`
@@ -680,6 +650,9 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
             },
           ]
         : []),
+      ...c.extras
+        .filter((x) => x.grams > 0)
+        .map((x) => ({ n: x.name || 'Ingredient', sub: `${num(x.pct, 3)}% of flour`, g: x.grams < 10 ? g1(x.grams) : g0(x.grams) })),
       { n: 'Total dough', sub: `${s.balls} × ${s.bw} g + ${num(s.waste, 1)}% waste`, g: g0(c.dough), sum: true },
     ],
   };
@@ -773,7 +746,7 @@ function WaterResult({ c, s }: { c: Calc; s: Settings }) {
   return (
     <div className={'water' + (w.ice ? ' cold' : w.tooHot ? ' hot' : '')}>
       <div className="water-main">
-        <span className="k">{c.model.kind === 'direct' ? 'Dough water' : 'Final dough water'}</span>
+        <span className="k">{noPreferment(c.model.kind) ? 'Dough water' : 'Final dough water'}</span>
         <span className="v">{w.ice ? `${Math.round(w.ice)} g ice` : `${Math.round(w.water)} °C`}</span>
       </div>
       <p>
@@ -783,7 +756,7 @@ function WaterResult({ c, s }: { c: Calc; s: Settings }) {
             or chill the flour, to land on {s.ddt} °C.
           </>
         ) : w.tooHot ? (
-          c.model.kind === 'direct' ? (
+          noPreferment(c.model.kind) ? (
             <>
               Keep the water under {WATER_MAX} °C: it goes straight onto the yeast. Let the flour warm up first, or accept a cooler dough and a longer
               bulk.

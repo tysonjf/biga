@@ -41,6 +41,7 @@ export default defineConfig({
           { name: 'New biga', short_name: 'Biga', url: '/?new=biga', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
           { name: 'New poolish', short_name: 'Poolish', url: '/?new=poolish', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
           { name: 'New direct dough', short_name: 'Direct', url: '/?new=direct', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
+          { name: 'New manual recipe', short_name: 'Manual', url: '/?new=manual', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
           { name: 'Toppings', short_name: 'Toppings', url: '/toppings', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
         ],
       },

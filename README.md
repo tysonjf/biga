@@ -4,8 +4,12 @@ An installable app (PWA) for planning biga, poolish and direct pizza doughs to t
 
 ## How it's organised
 
-- **Three kinds of dough:** a **biga** (stiff preferment), a **poolish** (runny preferment), or a **direct** dough, with no preferment: everything is mixed at once, ferments in bulk, then is balled. For a direct dough the yeast chart is the bulk ferment, and the schedule goes mix, ball, bake.
-- **Manual yeast:** every dough's Yeast card has **From the chart** or **Manual**. Manual is a plain baker's-percentage calculator: you set the yeast % yourself (of the preferment's flour, or a direct dough's flour), with your own flours, water, salt, oil, sugar and waste. The times still set the schedule, and the card says what the chart would use, with a button to take it. The yeast and the switch lock with the recipe.
+- **Four kinds of recipe:** a **biga** (stiff preferment), a **poolish** (runny preferment), a **direct** dough, with no preferment: everything is mixed at once, ferments in bulk, then is balled (its yeast chart is the bulk ferment, and the schedule goes mix, ball, bake), or a **manual** recipe: your own ratios.
+- **Manual recipes** are a plain baker's-percentage calculator, for when you know your numbers: no yeast chart, no schedule, no bakes.
+  - Size: dough balls × ball weight, plus waste.
+  - Your flours, each with its share of the flour (they always add up to 100%), then water, salt, yeast and anything else you add (oil, sugar, malt…), each as a % of the flour. The grams update as you go.
+  - The water's temperature for your target dough temperature (Dough temperature card) and, past 60% hydration, how much to hold back and drizzle in.
+  - Notes, the calculator and the full-screen ingredients, like any recipe.
 - **Recipes** are what you use day to day: the amounts, ferment, timings and notes (the method). The schedule starts **now** and keeps up with the clock, or you can pick when you'll mix the preferment:
   - Pick a time and it means the next time the clock reads it. At 7 pm, 5 pm means 5 pm tomorrow, but a time from the last hour means today, since you've just mixed it.
   - The day shows as Today, Tomorrow or a date, and you can tap it to change it.
@@ -157,6 +161,7 @@ worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts, bakes.
 migrations/     D1 schema. 0003_bakes adds bakes and the playground, and turns any recipe start time from the
                 last week into a bake so a schedule in progress isn't lost. 0003_toppings adds toppings
                 (two 0003s because both shipped separately; they touch different tables). 0004_direct_dough
-                rebuilds recipe, bake and playground to allow 'direct', in an order that keeps every bake
+                rebuilds recipe, bake and playground to allow 'direct', in an order that keeps every bake;
+                0005_any_kind rebuilds them again for 'manual', with no check on the kind (the Worker checks it)
 public/         icons, iOS launch screens, _headers (CSP + caching)
 ```

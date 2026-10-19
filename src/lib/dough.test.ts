@@ -438,33 +438,58 @@ describe('direct dough', () => {
   });
 });
 
-describe('manual yeast', () => {
-  it('uses your own IDY for a direct dough, and ignores the boost', () => {
-    const c = calc('direct', direct({ manual: true, idy: 0.08, boost: 50 }));
-    expect(c.preIdy * 100).toBeCloseTo(0.08, 9);
+describe('manual recipe', () => {
+  const manual = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.manual), ...o });
+
+  it('is plain baker’s percentages: every ingredient a share of the flour, adding up to the dough', () => {
+    const s = manual({ balls: 4, bw: 275, waste: 0, hyd: 73, salt: 2.5, idy: 0.08, extras: [{ name: 'Olive oil', pct: 2 }] });
+    const c = calc('manual', s);
+    expect(c.dough).toBe(1100);
+    expect(c.flour).toBeCloseTo(1100 / 1.7758, 6);
+    expect(c.final.water).toBeCloseTo(c.flour * 0.73, 9);
+    expect(c.final.salt).toBeCloseTo(c.flour * 0.025, 9);
     expect(c.final.yeast).toBeCloseTo(c.flour * 0.0008, 9);
+    expect(c.extras).toEqual([{ name: 'Olive oil', pct: 2, grams: c.flour * 0.02 }]);
+    const sum = c.final.flour + c.final.water + c.final.salt + c.final.yeast + c.extras[0].grams;
+    expect(sum).toBeCloseTo(c.dough, 6);
+    expect(c.pre.total).toBe(0);
+  });
+
+  it('matches the levain-style screenshot: 626 g flour, 457 g water, 15.7 g salt, 0.5 g yeast', () => {
+    const c = calc('manual', manual({ balls: 4, bw: 275, waste: 0, hyd: 73, salt: 2.5, idy: 0.08 }));
+    expect(c.flour).toBeCloseTo(626.49, 1);
+    expect(c.final.water).toBeCloseTo(457.34, 1);
+    expect(c.final.salt).toBeCloseTo(15.66, 1);
+    expect(c.final.yeast).toBeCloseTo(0.5, 1);
+  });
+
+  it('splits the flour by its shares', () => {
+    const c = calc('manual', manual({ flours: [{ name: 'Tipo 00', pct: 80, fin: 80 }, { name: 'Wholemeal', pct: 20, fin: 20 }] }));
+    expect(c.flours[0].fin / c.flour).toBeCloseTo(0.8, 9);
+    expect(c.flours[1].fin / c.flour).toBeCloseTo(0.2, 9);
+  });
+
+  it('works out the water temperature and the 60% split, with no chart or warnings', () => {
+    const c = calc('manual', manual({ hyd: 73 }));
+    expect(c.mixWater).not.toBeNull();
+    expect(c.holdBack!.first + c.holdBack!.rest).toBe(Math.round(c.final.water));
+    expect(c.bigaWater).toBeNull();
     expect(c.warnings).toEqual([]);
   });
 
-  it('uses your own IDY for a preferment, as a share of its flour', () => {
-    const c = calc('biga', biga({ manual: true, idy: 0.5 }));
-    expect(c.preIdy * 100).toBeCloseTo(0.5, 9);
-    expect(c.pre.yeast).toBeCloseTo(c.pre.flour * 0.005, 9);
-    // The final dough's yeast is its own setting, as before.
-    expect(c.final.yeast).toBeCloseTo(c.flour * 0.001, 9);
+  it('stores its ingredients, in range', () => {
+    expect(normalise('manual', {})).toEqual(DEFAULTS.manual);
+    const s = normalise('manual', { extras: [{ name: 'Malt', pct: 0.5 }, { pct: 200 }, 'junk', { name: 'x'.repeat(99), pct: -3 }] });
+    expect(s.extras).toEqual([
+      { name: 'Malt', pct: 0.5 },
+      { name: 'Ingredient', pct: 100 },
+      { name: 'x'.repeat(40), pct: 0 },
+    ]);
+    expect(normalise('manual', { idy: 9 }).idy).toBe(5);
   });
 
-  it('keeps the schedule: the times still come from the ferment', () => {
-    const start = new Date(2026, 9, 20, 9, 0);
-    const a = timeline('direct', direct({ manual: true, idy: 0.1, hours: 6 }), start);
-    const b = timeline('direct', direct({ hours: 6 }), start);
-    expect(a.bake.getTime()).toBe(b.bake.getTime());
-  });
-
-  it('stores it, in range', () => {
-    expect(normalise('direct', {})).toMatchObject({ manual: false, fridgeT: 4 });
-    expect(normalise('direct', { manual: true, idy: 0.0825 })).toMatchObject({ manual: true, idy: 0.083 });
-    expect(normalise('biga', { idy: 9, fridgeT: 40, manual: 'yes' })).toMatchObject({ idy: 3, fridgeT: 12, manual: false });
+  it('leaves the other kinds without extras', () => {
+    expect(calc('biga', biga()).extras).toEqual([]);
   });
 });
 

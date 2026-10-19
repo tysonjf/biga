@@ -24,6 +24,8 @@
   --poolish-soft: #e6eedb;
   --direct: #8a6100;
   --direct-soft: #f6ecd3;
+  --manual: #3f5f86;
+  --manual-soft: #e3ebf5;
   --warn-bg: #fbf0d6;
   --warn-ink: #714b0b;
   --cold-bg: #e3eef6;
@@ -69,7 +71,7 @@
     --panel: #1f1b18; --panel-2: #2a2521; --ink: #f4eee6; --ink-2: #ddd4c8; --muted: #a59a8d;
     --line: #2f2a25; --line-strong: #463f37;
     --accent: #f0885a; --accent-press: #f6a07a; --accent-ink: #210e05; --accent-soft: #3a241a;
-    --biga: #f0885a; --biga-soft: #3a241a; --poolish: #a9c977; --poolish-soft: #26301c; --direct: #e8c46a; --direct-soft: #352a14;
+    --biga: #f0885a; --biga-soft: #3a241a; --poolish: #a9c977; --poolish-soft: #26301c; --direct: #e8c46a; --direct-soft: #352a14; --manual: #9dbbe0; --manual-soft: #1e2a38;
     --warn-bg: #3a2e14; --warn-ink: #f2d38f; --cold-bg: #172b3a; --cold-ink: #a9d3f2; --danger: #ff8a7f;
     --dough: #efe2cd; --dough-shade: #cdb48d;
     --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.3);
@@ -85,7 +87,7 @@
   --panel: #1f1b18; --panel-2: #2a2521; --ink: #f4eee6; --ink-2: #ddd4c8; --muted: #a59a8d;
   --line: #2f2a25; --line-strong: #463f37;
   --accent: #f0885a; --accent-press: #f6a07a; --accent-ink: #210e05; --accent-soft: #3a241a;
-  --biga: #f0885a; --biga-soft: #3a241a; --poolish: #a9c977; --poolish-soft: #26301c; --direct: #e8c46a; --direct-soft: #352a14;
+  --biga: #f0885a; --biga-soft: #3a241a; --poolish: #a9c977; --poolish-soft: #26301c; --direct: #e8c46a; --direct-soft: #352a14; --manual: #9dbbe0; --manual-soft: #1e2a38;
   --warn-bg: #3a2e14; --warn-ink: #f2d38f; --cold-bg: #172b3a; --cold-ink: #a9d3f2; --danger: #ff8a7f;
   --dough: #efe2cd; --dough-shade: #cdb48d;
   --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.3);
@@ -319,6 +321,7 @@ h1, h2, h3, p { margin: 0; }
 .chip.biga { background: var(--biga-soft); color: var(--biga); }
 .chip.poolish { background: var(--poolish-soft); color: var(--poolish); }
 .chip.direct { background: var(--direct-soft); color: var(--direct); }
+.chip.manual { background: var(--manual-soft); color: var(--manual); }
 .chip.plain { background: var(--panel-2); color: var(--muted); }
 .chip.base.red { background: var(--red-soft); color: var(--red); }
 .chip.base.white { background: var(--white-soft); color: var(--white); }
@@ -330,6 +333,7 @@ h1, h2, h3, p { margin: 0; }
 }
 .kind-badge.poolish { background: var(--poolish); }
 .kind-badge.direct { background: var(--direct); }
+.kind-badge.manual { background: var(--manual); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip-btn {
@@ -763,6 +767,28 @@ ul.ing li.sum .n { font-weight: 650; }
 }
 .calc-tape button span { min-width: 0; overflow-wrap: anywhere; }
 .calc-tape b { color: var(--ink-2); font-weight: 650; }
+
+/* ---------- manual recipes: one ingredient per row, its grams beside its name ---------- */
+.mlist { list-style: none; margin: 0; padding: 0; display: grid; }
+.mrow {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'name g' 'pct x' 'sub sub';
+  gap: 8px 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line);
+}
+.mlist > .mrow:first-child { border-top: 0; padding-top: 0; }
+.mrow .mname { grid-area: name; min-width: 0; }
+span.mname { font: 650 19px/1.2 var(--display); font-variation-settings: 'opsz' 40; }
+input.mname { height: 44px; font-weight: 600; }
+.mrow .mg {
+  grid-area: g; text-align: right; white-space: nowrap;
+  font: 700 26px/1 var(--display); font-variant-numeric: tabular-nums; font-variation-settings: 'opsz' 60;
+}
+.mrow .mpct { grid-area: pct; max-width: 230px; min-width: 0; }
+.mrow .xbtn { grid-area: x; width: 44px; justify-self: end; }
+.mrow .msub { grid-area: sub; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.mfixed {
+  display: grid; place-items: center; height: 48px; border-radius: var(--r-ctl);
+  background: var(--panel-2); color: var(--muted); font-weight: 650; font-variant-numeric: tabular-nums;
+}
 
 /* ---------- full-screen ingredients ---------- */
 dialog.ingv {

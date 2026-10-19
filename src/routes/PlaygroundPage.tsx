@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DEFAULTS, KIND_NAME, KINDS, LIMITS, normalise, type Kind, type Settings } from '../../shared/recipe';
+import { DEFAULTS, KIND_NAME, LIMITS, normalise, PLAY_KINDS, type Kind, type Settings } from '../../shared/recipe';
 import { useCreateRecipe } from '../lib/actions';
 import { usePlayground, useSavePlay } from '../lib/query';
 import { toast } from '../lib/toast';
@@ -18,7 +18,7 @@ const KIND_KEY = 'biga-play-kind';
 export function storedKind(): Kind {
   try {
     const v = localStorage.getItem(KIND_KEY);
-    return KINDS.includes(v as Kind) ? (v as Kind) : 'biga';
+    return PLAY_KINDS.includes(v as Kind) ? (v as Kind) : 'biga';
   } catch {
     return 'biga';
   }
@@ -108,7 +108,7 @@ function Playground({ kind, setKind, initial }: { kind: Kind; setKind: (k: Kind)
         <div className="title-block">
           <h1>Playground</h1>
           <div className="segmented kind-switch" role="tablist" aria-label="Dough type">
-            {KINDS.map((k) => (
+            {PLAY_KINDS.map((k) => (
               <button key={k} type="button" role="tab" aria-selected={kind === k} onClick={() => k !== kind && setKind(k)}>
                 {KIND_NAME[k]}
               </button>

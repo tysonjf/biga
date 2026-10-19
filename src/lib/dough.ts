@@ -58,10 +58,23 @@ export const MODELS: Record<Kind, Model> = {
       'Ready to ball when it has about doubled, feels airy and slightly domed, and shows bubbles on the sides and bottom of the container.',
     note: 'Craig’s yeast chart from pizzamaking.com, for a dough that about doubles, worked out over the whole schedule: the bulk, the balls, and any time in the fridge, following the dough’s own temperature as it cools down in the fridge and warms up again afterwards (the first warm hours in the fridge do a lot of the work). A 4 °C fridge runs at about a twelfth of room speed. Salt, oil and sugar slow it a little, water speeds it up. Home recipes such as Forkish’s or King Arthur’s use 1.5–3× more yeast for a bigger rise.',
   },
+  // A manual recipe has no chart: its yeast is your own. This only names it and gives it a schedule.
+  manual: {
+    kind: 'manual',
+    name: 'Dough',
+    temps: range(2, 32),
+    hours: range(1, 96),
+    idy: () => 0,
+    ready: 'Ready when it has about doubled and feels airy.',
+    note: '',
+  },
 };
 
 export const nearest = (list: number[], v: number) =>
   list.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+
+/** A direct dough or a manual recipe: one mix, no preferment. */
+export const noPreferment = (kind: Kind) => kind === 'direct' || kind === 'manual';
 
 /* ---------- direct dough yeast ---------- */
 
@@ -250,6 +263,8 @@ export type Calc = {
   /** Flours are set separately for the preferment and the final dough. */
   split: boolean;
   flours: FlourLine[];
+  /** A manual recipe's own ingredients, in grams. */
+  extras: { name: string; pct: number; grams: number }[];
   /** Water for mixing the biga itself (Giorilli); null for a poolish or a direct dough. */
   bigaWater: BigaWater | null;
   mixWater: WaterTemp | null;
@@ -316,10 +331,13 @@ export function calc(kind: Kind, s: Settings): Calc {
   const oil = s.oil / 100;
   const sugar = s.sugar / 100;
   // A direct dough has no preferment: the chart's yeast goes into the one mix, for all the flour.
-  const direct = kind === 'direct';
-  // The chart's yeast, % of the preferment's flour (a direct dough's flour), or your own.
-  const charted = direct ? directIdy(s, temp, hours) : m.idy(temp, hours);
-  const chartIdy = (s.manual ? s.idy : charted * (1 + s.boost / 100)) / 100;
+  // A manual recipe is the same, with your own yeast.
+  const direct = noPreferment(kind);
+  const manual = kind === 'manual';
+  // The chart's yeast, % of the preferment's flour (a direct dough's flour).
+  const charted = kind === 'direct' ? directIdy(s, temp, hours) : m.idy(temp, hours);
+  const chartIdy = (manual ? s.idy : charted * (1 + s.boost / 100)) / 100;
+  const extraPct = s.extras.reduce((a, x) => a + x.pct, 0) / 100;
   const bp = direct ? 0 : Math.min(Math.max(s.bp, 0), 100) / 100;
   const bh = (kind === 'poolish' ? 100 : s.bh) / 100;
   const finalIdy = direct ? chartIdy * 100 : s.fy * roomFactor(s.room);
@@ -327,7 +345,7 @@ export function calc(kind: Kind, s: Settings): Calc {
   const preIdy = chartIdy;
 
   const dough = s.balls * s.bw * (1 + s.waste / 100);
-  const FL = dough / (1 + hyd + salt + oil + sugar + fy + preIdy * bp);
+  const FL = dough / (1 + hyd + salt + oil + sugar + fy + preIdy * bp + extraPct);
   const bF = FL * bp;
   const bW = bF * bh;
   const bY = bF * preIdy;
@@ -373,9 +391,9 @@ export function calc(kind: Kind, s: Settings): Calc {
     );
   else if (fW < FL * 0.05)
     warnings.push(`Only ${Math.round(fW)} g of water is left for the final mix, so it may be hard to bring together. Lower the ${m.name.toLowerCase()} share.`);
-  if (direct && !s.manual && charted > CHART_MAX)
+  if (kind === 'direct' && charted > CHART_MAX)
     warnings.push(`${hours} h at ${temp} °C is too short for the dough to rise on Craig’s chart: give it longer or somewhere warmer.`);
-  else if (direct && !s.manual && charted < CHART_MIN)
+  else if (kind === 'direct' && charted < CHART_MIN)
     warnings.push(`${hours} h at ${temp} °C is longer than Craig’s chart goes: shorten it or ferment it cooler.`);
   if ((!direct && bY < 0.3) || (fY > 0 && fY < 0.3))
     warnings.push(
@@ -396,6 +414,7 @@ export function calc(kind: Kind, s: Settings): Calc {
     final: { flour: fF, water: fW, salt: fS, oil: fO, sugar: fSu, yeast: fY },
     split,
     flours,
+    extras: s.extras.map((x) => ({ ...x, grams: (FL * x.pct) / 100 })),
     bigaWater: kind === 'biga' ? giorilli(s.room, s.flourT) : null,
     mixWater,
     holdBack: holdBack(FL, bW, fW, s.hyd),
@@ -421,7 +440,7 @@ export function doughVars(kind: Kind, s: Settings, c: Calc): DoughVar[] {
   return [
     g('flour', c.flour),
     g('water', c.water),
-    ...(kind === 'direct' ? [] : [g(kind, c.pre.total)]),
+    ...(noPreferment(kind) ? [] : [g(kind, c.pre.total)]),
     g('salt', c.final.salt),
     g('oil', c.final.oil),
     g('sugar', c.final.sugar),
@@ -459,7 +478,7 @@ export function fmtDur(min: number): string {
  */
 export function afterReady(kind: Kind, s: Settings): number {
   const balls = s.fridge ? s.fridgeRest + s.fridgeH * 60 + s.temper : s.proof;
-  return kind === 'direct' ? balls : s.mix + s.bulk + balls;
+  return noPreferment(kind) ? balls : s.mix + s.bulk + balls;
 }
 
 export function timeline(kind: Kind, s: Settings, start: Date): Timeline {
@@ -474,7 +493,7 @@ export function timeline(kind: Kind, s: Settings, start: Date): Timeline {
   const usable = b ? `usable from ${fmtClock(addMin(ready, -b))} to ${fmtClock(addMin(ready, b))}` : '';
   // A direct dough's chart is its bulk: it's balled when the chart's hours are up.
   const steps: Step[] =
-    kind === 'direct'
+    noPreferment(kind)
       ? [
           { key: 'start', at: start, title: 'Mix the dough', sub: `Mix to ${s.ddt} °C, then ${H} h bulk at ${T} °C${T <= FRIDGE_MAX ? ' in the fridge' : ''}` },
           { key: 'ball', at: ready, title: 'Divide and ball', sub: usable ? `Bulk done · ${usable}` : `After ${H} h bulk` },
@@ -643,7 +662,7 @@ export function bakeStatus(kind: Kind, tl: Timeline, now: Date): BakeStatus {
   }
   const fridge = steps.some((s) => s.key === 'fridge');
   const titles: Record<string, string> = {
-    start: kind === 'direct' ? 'Bulk fermenting' : `${MODELS[kind].name} fermenting`,
+    start: noPreferment(kind) ? 'Bulk fermenting' : `${MODELS[kind].name} fermenting`,
     ready: 'Final mix and bulk',
     ball: fridge ? 'Balls resting' : 'Balls proofing',
     fridge: 'Balls in the fridge',

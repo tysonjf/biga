@@ -10,6 +10,7 @@ import { useNow } from '../lib/useNow';
 import { useStoredFlag } from '../lib/useStoredFlag';
 import { BakeRow } from '../components/BakeRow';
 import { CalculatorCard } from '../components/Calculator';
+import { ManualCard } from '../components/Manual';
 import { doughSummary, DoughCard, HowCard, JumpNav, RecipeCard, TempFold, TimingFold, useDough, usePlanStart, YeastCard } from '../components/Dough';
 import { Icon } from '../components/Icon';
 import { IngredientsView } from '../components/IngredientsView';
@@ -62,6 +63,12 @@ const SECTIONS = [
   { id: 'calc', label: 'Calculator' },
 ] as const;
 
+const MANUAL_SECTIONS = [
+  { id: 'ingredients', label: 'Ingredients' },
+  { id: 'notes', label: 'Notes' },
+  { id: 'calc', label: 'Calculator' },
+] as const;
+
 const byStart = (a: Bake, b: Bake) => (b.start || '').localeCompare(a.start || '') || b.createdAt - a.createdAt;
 
 function RecipeEditor({ recipe }: { recipe: Recipe }) {
@@ -86,6 +93,24 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
   const { start, planned } = usePlanStart(kind, s);
   const d = useDough(kind, s, setS, start, !planned);
   const sub = doughSummary(s, d.c);
+  // A manual recipe is a plain ratio calculator: no yeast chart, schedule or bakes.
+  const manual = kind === 'manual';
+  // Notes aren't settings: they stay editable while the recipe is locked.
+  const notesCard = (order: number) => (
+    <NotesCard
+      id="notes"
+      title="Notes"
+      hint="Method, tips, what to look for"
+      value={notes}
+      onChange={setNotes}
+      editable
+      placeholder="Write the method, tips, and what to look for…"
+      empty=""
+      template={METHOD_TEMPLATE[kind]}
+      order={order}
+      vars={d.scope}
+    />
+  );
 
   // Autosave: local state is the source of truth while editing; the cache is updated optimistically.
   const current = (): Recipe => ({ ...recipe, name: name.trim().slice(0, LIMITS.name) || 'Untitled', settings: s, notes });
@@ -158,37 +183,38 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
             {locked ? null : <p className="editing-note">Editing the recipe. Changes save as you go; bakes you’ve already started keep their own copy.</p>}
           </div>
         }
-        below={<JumpNav sections={SECTIONS} onJump={(id) => id === 'timing' && setTimingOpen(true)} />}
+        below={<JumpNav sections={manual ? MANUAL_SECTIONS : SECTIONS} onJump={(id) => id === 'timing' && setTimingOpen(true)} />}
       >
-        <div className="cols">
-          <div className="col">
-            <YeastCard d={d} order={1} planner />
-            <DoughCard d={d} order={2} />
-            {/* Notes aren't settings: they stay editable while the recipe is locked. */}
-            <NotesCard
-              id="notes"
-              title="Notes"
-              hint="Method, tips, what to look for"
-              value={notes}
-              onChange={setNotes}
-              editable
-              placeholder="Write the method, tips, and what to look for…"
-              empty=""
-              template={METHOD_TEMPLATE[kind]}
-              order={4}
-              vars={d.scope}
-            />
-            {/* Last on a phone; under the notes on a computer. */}
-            <CalculatorCard vars={d.vars} scope={d.scope} order={9} />
+        {manual ? (
+          // A manual recipe is a ratio calculator: your ingredients, their temperatures, your notes.
+          <div className="cols">
+            <div className="col">
+              <ManualCard d={d} onFull={() => setCook(true)} order={1} />
+              {notesCard(3)}
+            </div>
+            <div className="col sticky">
+              <TempFold d={d} order={2} />
+              <CalculatorCard vars={d.vars} scope={d.scope} order={4} />
+            </div>
           </div>
-          <div className="col sticky">
-            <RecipeCard d={d} onFull={() => setCook(true)} order={3} />
-            <TempFold d={d} order={5} />
-            <TimingFold d={d} open={timingOpen} onToggle={setTimingOpen} order={6} />
-            <BakesCard bakes={bakes} onStart={bake} order={7} />
-            <HowCard c={d.c} order={8} />
+        ) : (
+          <div className="cols">
+            <div className="col">
+              <YeastCard d={d} order={1} planner />
+              <DoughCard d={d} order={2} />
+              {notesCard(4)}
+              {/* Last on a phone; under the notes on a computer. */}
+              <CalculatorCard vars={d.vars} scope={d.scope} order={9} />
+            </div>
+            <div className="col sticky">
+              <RecipeCard d={d} onFull={() => setCook(true)} order={3} />
+              <TempFold d={d} order={5} />
+              <TimingFold d={d} open={timingOpen} onToggle={setTimingOpen} order={6} />
+              <BakesCard bakes={bakes} onStart={bake} order={7} />
+              <HowCard c={d.c} order={8} />
+            </div>
           </div>
-        </div>
+        )}
 
         <IngredientsView open={cook} onClose={() => setCook(false)} title={name || 'Untitled'} sub={sub} stages={d.stages} />
 
@@ -216,9 +242,12 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
             </>
           ) : (
             <div className="sheet-actions">
-              <button type="button" className="action" onClick={bake}>
-                <Icon name="flame" /> Start a bake
-              </button>
+              {/* A manual recipe has no schedule to follow. */}
+              {manual ? null : (
+                <button type="button" className="action" onClick={bake}>
+                  <Icon name="flame" /> Start a bake
+                </button>
+              )}
               <button
                 type="button"
                 className="action"

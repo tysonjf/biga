@@ -12,7 +12,7 @@ playground.get('/', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT kind, settings, updated_at FROM playground WHERE user_id = ?1')
     .bind(c.get('userId'))
     .all<Row>();
-  const out: Playground = { biga: null, poolish: null, direct: null };
+  const out: Playground = { biga: null, poolish: null, direct: null, manual: null };
   for (const r of results) out[r.kind] = toPlay(r);
   return c.json({ playground: out });
 });

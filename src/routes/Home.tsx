@@ -27,9 +27,11 @@ const KIND_BLURB: Record<Kind, string> = {
   biga: 'Stiff, 45% hydration. Deep, nutty flavour and strong structure.',
   poolish: 'Batter-like, 100% hydration. Extensible dough, open and airy crumb.',
   direct: 'No preferment: everything mixed at once, a bulk ferment, then balls. Simple, same-day or overnight.',
+  manual: 'Your own ratios: flours, water, salt, yeast and anything else as a % of the flour. No chart, just the numbers.',
 };
 
 function summary(kind: Kind, s: Recipe['settings']) {
+  if (kind === 'manual') return `${s.balls} × ${s.bw} g · ${+s.hyd.toFixed(1)}% · ${+s.salt.toFixed(2)}% salt`;
   const m = MODELS[kind];
   return `${s.balls} × ${s.bw} g · ${+s.hyd.toFixed(1)}% · ${nearest(m.hours, s.hours)} h @ ${nearest(m.temps, s.temp)}°`;
 }
@@ -164,7 +166,7 @@ export function HomePage() {
         <div className="empty">
           <DoughBall />
           <h2>No doughs yet</h2>
-          <p>Start with a stiff biga, a runny poolish or a direct dough, or work out the numbers in the playground and save them as a recipe.</p>
+          <p>Start with a stiff biga, a runny poolish or a direct dough, or set your own ratios in a manual recipe.</p>
           <div className="empty-actions">
             <button type="button" className="btn primary" onClick={() => create('biga')}>
               New biga
@@ -174,6 +176,9 @@ export function HomePage() {
             </button>
             <button type="button" className="btn" onClick={() => create('direct')}>
               New direct dough
+            </button>
+            <button type="button" className="btn" onClick={() => create('manual')}>
+              New manual recipe
             </button>
           </div>
         </div>

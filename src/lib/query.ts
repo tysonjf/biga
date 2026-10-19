@@ -170,7 +170,7 @@ listMutations<Topping>({
   body: (t) => ({ name: t.name, data: t.data, createdAt: t.createdAt, updatedAt: t.updatedAt }),
 });
 
-const EMPTY_PLAYGROUND: Playground = { biga: null, poolish: null, direct: null };
+const EMPTY_PLAYGROUND: Playground = { biga: null, poolish: null, direct: null, manual: null };
 
 queryClient.setMutationDefaults(PLAY_SAVE, {
   mutationFn: (v: PlayVars) =>

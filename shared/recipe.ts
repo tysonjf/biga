@@ -5,9 +5,15 @@
 // without touching the recipe), and adds when the preferment was mixed and notes of its own.
 // The playground is a scratch recipe per preferment that saves as you go.
 
-// A direct dough has no preferment: everything is mixed at once and ferments in bulk.
-export type Kind = 'biga' | 'poolish' | 'direct';
-export const KINDS: Kind[] = ['biga', 'poolish', 'direct'];
+// A direct dough has no preferment: everything is mixed at once and ferments in bulk. A manual
+// recipe is a plain baker's-percentage calculator: your own ratios, no yeast chart or schedule.
+export type Kind = 'biga' | 'poolish' | 'direct' | 'manual';
+export const KINDS: Kind[] = ['biga', 'poolish', 'direct', 'manual'];
+/** The kinds with a playground: the ones with a yeast chart to try out. */
+export const PLAY_KINDS: Kind[] = ['biga', 'poolish', 'direct'];
+
+/** A manual recipe's own ingredient: oil, sugar, malt, anything. */
+export type Extra = { name: string; pct: number };
 
 export type Flour = {
   name: string;
@@ -26,8 +32,8 @@ export type Settings = {
   bp: number; // preferment share, % of total flour (not used by a direct dough)
   bh: number; // preferment hydration, % of preferment flour (not used by a direct dough)
   boost: number; // ± % on the charted yeast
-  manual: boolean; // set the yeast yourself instead of taking it from the chart
-  idy: number; // with `manual`: IDY, % of the preferment's flour (a direct dough's flour)
+  idy: number; // a manual recipe's yeast, % of flour
+  extras: Extra[]; // a manual recipe's other ingredients, % of flour
   fy: number; // final dough IDY, % of total flour, for a 18–24 °C proofing room (not used by a direct dough)
   temp: number; // preferment ferment temperature, °C; a direct dough's bulk ferment temperature
   hours: number; // preferment ferment time, h; a direct dough's bulk ferment time
@@ -74,7 +80,7 @@ export const FIELDS: Record<NumKey, Field> = {
   bh: { label: 'Hydration', unit: '%', step: 1, min: 40, max: 125, dec: 0 },
   boost: { label: 'Yeast boost', unit: '%', step: 5, min: -90, max: 300, dec: 0 },
   fy: { label: 'Final dough IDY', unit: '% flour', step: 0.05, min: 0, max: 1, dec: 2 },
-  idy: { label: 'Yeast', unit: '% IDY', step: 0.01, min: 0, max: 3, dec: 3 },
+  idy: { label: 'Yeast', unit: '%', step: 0.01, min: 0, max: 5, dec: 3 },
   temp: { label: 'Ferment temp', unit: '°C', step: 1, min: 2, max: 32, dec: 0 },
   hours: { label: 'Ferment time', unit: 'h', step: 1, min: 1, max: 96, dec: 0 },
   buf: { label: 'Ready window', unit: '± %', step: 5, min: 0, max: 50, dec: 0 },
@@ -103,8 +109,8 @@ const COMMON = {
   oil: 0,
   sugar: 0,
   boost: 0,
-  manual: false,
   idy: 0.1,
+  extras: [],
   fy: 0.1,
   buf: 15,
   mix: 30,
@@ -131,14 +137,17 @@ export const DEFAULTS: Record<Kind, Settings> = {
   poolish: { ...COMMON, bw: 260, hyd: 68, salt: 2.8, fy: 0.15, bp: 30, bh: 100, temp: 21, hours: 14 },
   // A same-day dough: everything mixed at once, a bulk ferment at room temperature, then balls.
   direct: { ...COMMON, bw: 260, hyd: 65, salt: 2.8, fy: 0, bp: 75, bh: 45, temp: 21, hours: 6 },
+  // Your own ratios: flours, water, salt, yeast and whatever else, as % of the flour.
+  manual: { ...COMMON, hyd: 70, salt: 2.8, fy: 0, bp: 75, bh: 45, temp: 21, hours: 8, idy: 0.1 },
 };
 
-export const KIND_NAME: Record<Kind, string> = { biga: 'Biga', poolish: 'Poolish', direct: 'Direct' };
+export const KIND_NAME: Record<Kind, string> = { biga: 'Biga', poolish: 'Poolish', direct: 'Direct', manual: 'Manual' };
 
 export const LIMITS = {
   name: 60,
   flourName: 40,
   flours: 8,
+  extras: 8,
   notes: 20_000,
   recipesPerUser: 500,
   bakesPerUser: 2_000,
@@ -168,7 +177,14 @@ export function normalise(kind: Kind, raw: unknown): Settings {
   if (typeof src.preT === 'number' && Number.isFinite(src.preT)) out.preT = round(clamp(src.preT, PRE_T.min, PRE_T.max), PRE_T.dec);
   if (typeof src.fridge === 'boolean') out.fridge = src.fridge;
   if (typeof src.split === 'boolean') out.split = src.split;
-  if (typeof src.manual === 'boolean') out.manual = src.manual;
+  if (Array.isArray(src.extras))
+    out.extras = src.extras
+      .slice(0, LIMITS.extras)
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+      .map((x) => ({
+        name: typeof x.name === 'string' ? x.name.slice(0, LIMITS.flourName) : 'Ingredient',
+        pct: typeof x.pct === 'number' && Number.isFinite(x.pct) ? round(clamp(x.pct, 0, 100), 3) : 0,
+      }));
   if (typeof src.plan === 'string' && START_RE.test(src.plan)) out.plan = src.plan;
   if (Array.isArray(src.flours)) {
     const flours = src.flours
