@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { clockChange, describeClockChange, type Model } from '../lib/dough';
+import { CHART_MAX, CHART_MIN, clockChange, describeClockChange, FRIDGE_MAX, type Model } from '../lib/dough';
 import { useLocked } from '../lib/lock';
 
 type Props = {
@@ -31,39 +31,51 @@ function When({ d, bake }: { d: Date; bake?: boolean }) {
   );
 }
 
+/** A dose as the chart shows it: two decimals, three for the small doses of long ferments. */
+const cell = (v: number) => v.toFixed(v < 0.095 ? 3 : 2);
+
 const Row = memo(function Row({
   t,
   hours,
+  values,
   sel,
-  idy,
+  cold,
   bucket,
 }: {
   t: number;
   hours: number[];
+  /** Each column's dose, or null off Craig's chart (too much to rise, too little to weigh). */
+  values: (number | null)[];
   sel: number | null;
-  idy: (t: number, h: number) => number;
+  cold: boolean;
   bucket: (v: number) => number;
 }) {
   return (
     <tr>
-      <th scope="row" className={sel !== null ? 'x' : undefined}>
+      <th scope="row" className={[sel !== null ? 'x' : '', cold ? 'cold' : ''].filter(Boolean).join(' ') || undefined} title={cold ? 'In the fridge' : undefined}>
         {t}°
       </th>
-      {hours.map((h) => {
-        const v = idy(t, h);
+      {hours.map((h, i) => {
+        const v = values[i];
         const on = sel === h;
         return (
           <td key={h}>
-            <button
-              type="button"
-              className={`b${bucket(v)}${on ? ' on' : ''}`}
-              data-t={t}
-              data-h={h}
-              aria-pressed={on}
-              aria-label={`${t} °C for ${h} hours: ${v.toFixed(2)}% IDY`}
-            >
-              {v.toFixed(2)}
-            </button>
+            {v === null ? (
+              <span className={'off' + (on ? ' on' : '')} aria-label={`${t} °C for ${h} hours: off the chart`}>
+                –
+              </span>
+            ) : (
+              <button
+                type="button"
+                className={`b${bucket(v)}${on ? ' on' : ''}`}
+                data-t={t}
+                data-h={h}
+                aria-pressed={on}
+                aria-label={`${t} °C for ${h} hours: ${cell(v)}% IDY`}
+              >
+                {cell(v)}
+              </button>
+            )}
           </td>
         );
       })}
@@ -81,13 +93,22 @@ export function Heatmap({ model, temp, hours, onPick, start, live, after, reveal
   // A clock change anywhere across the chart shifts the later column times by an hour.
   const change = start ? clockChange(start, new Date(start.getTime() + (H.at(-1)! * 60 + after) * 60_000)) : null;
 
-  const { bucket, lo, hi } = useMemo(() => {
-    const lmin = Math.log(idy(temps.at(-1)!, H.at(-1)!));
-    const lmax = Math.log(idy(temps[0], H[0]));
+  // Every cell once: the colour scale spans the doses actually on the chart.
+  const { grid, bucket, lo, hi } = useMemo(() => {
+    const grid = temps.map((t) =>
+      H.map((h) => {
+        const v = idy(t, h);
+        return v >= CHART_MIN && v <= CHART_MAX ? v : null;
+      }),
+    );
+    const all = grid.flat().filter((v): v is number => v !== null);
+    const lmin = Math.log(Math.min(...all));
+    const lmax = Math.log(Math.max(...all));
     return {
+      grid,
       lo: Math.exp(lmin),
       hi: Math.exp(lmax),
-      bucket: (v: number) => Math.max(0, Math.min(5, Math.floor(((Math.log(v) - lmin) / (lmax - lmin)) * 6))),
+      bucket: (v: number) => Math.max(0, Math.min(5, Math.floor(((Math.log(v) - lmin) / (lmax - lmin || 1)) * 6))),
     };
   }, [idy, temps, H]);
 
@@ -162,8 +183,8 @@ export function Heatmap({ model, temp, hours, onPick, start, live, after, reveal
             </tr>
           </thead>
           <tbody>
-            {temps.map((t) => (
-              <Row key={t} t={t} hours={H} sel={t === temp ? hours : null} idy={idy} bucket={bucket} />
+            {temps.map((t, i) => (
+              <Row key={t} t={t} hours={H} values={grid[i]} sel={t === temp ? hours : null} cold={direct && t <= FRIDGE_MAX} bucket={bucket} />
             ))}
           </tbody>
         </table>
@@ -171,18 +192,19 @@ export function Heatmap({ model, temp, hours, onPick, start, live, after, reveal
       <div className="legend">
         <span>IDY % of {direct ? 'flour' : `${pre} flour`}</span>
         <span className="scale">
-          <span>{lo.toFixed(2)}</span>
+          <span>{cell(lo)}</span>
           <span className="sw" aria-hidden="true">
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <span key={i} className={`b${i}`} />
             ))}
           </span>
-          <span>{hi.toFixed(2)}</span>
+          <span>{cell(hi)}</span>
         </span>
         {start ? (
           <span className="legend-note">
             {live ? 'Column times if you start now' : 'Column times'}: {direct ? 'when to ball the dough' : `when the ${pre} is ready`}, and when the dough
             is ready to bake.
+            {direct ? ` Rows at ${FRIDGE_MAX} °C and below are a cold bulk in the fridge; – is off Craig’s chart.` : null}
             {change ? ` ${describeClockChange(change)}, and the times allow for it.` : null}
           </span>
         ) : null}

@@ -26,6 +26,8 @@ export type Settings = {
   bp: number; // preferment share, % of total flour (not used by a direct dough)
   bh: number; // preferment hydration, % of preferment flour (not used by a direct dough)
   boost: number; // ± % on the charted yeast
+  manual: boolean; // set the yeast yourself instead of taking it from the chart
+  idy: number; // with `manual`: IDY, % of the preferment's flour (a direct dough's flour)
   fy: number; // final dough IDY, % of total flour, for a 18–24 °C proofing room (not used by a direct dough)
   temp: number; // preferment ferment temperature, °C; a direct dough's bulk ferment temperature
   hours: number; // preferment ferment time, h; a direct dough's bulk ferment time
@@ -47,6 +49,7 @@ export type Settings = {
   fridge: boolean; // bake later: short room rest, then the balls go in the fridge
   fridgeRest: number; // room rest before the fridge, min
   fridgeH: number; // hours in the fridge
+  fridgeT: number; // fridge temperature, °C (counts toward a direct dough's yeast)
   temper: number; // out of the fridge before baking, min
   /**
    * Recipes and the playground: when you plan to mix the preferment, local "YYYY-MM-DDTHH:mm".
@@ -71,6 +74,7 @@ export const FIELDS: Record<NumKey, Field> = {
   bh: { label: 'Hydration', unit: '%', step: 1, min: 40, max: 125, dec: 0 },
   boost: { label: 'Yeast boost', unit: '%', step: 5, min: -90, max: 300, dec: 0 },
   fy: { label: 'Final dough IDY', unit: '% flour', step: 0.05, min: 0, max: 1, dec: 2 },
+  idy: { label: 'Yeast', unit: '% IDY', step: 0.01, min: 0, max: 3, dec: 3 },
   temp: { label: 'Ferment temp', unit: '°C', step: 1, min: 2, max: 32, dec: 0 },
   hours: { label: 'Ferment time', unit: 'h', step: 1, min: 1, max: 96, dec: 0 },
   buf: { label: 'Ready window', unit: '± %', step: 5, min: 0, max: 50, dec: 0 },
@@ -82,7 +86,8 @@ export const FIELDS: Record<NumKey, Field> = {
   flourT: { label: 'Flour', unit: '°C', step: 1, min: -5, max: 40, dec: 0 },
   friction: { label: 'Mixer heat', unit: '+°C', step: 1, min: 0, max: 20, dec: 0 },
   fridgeRest: { label: 'Room rest first', unit: 'min', step: 15, min: 0, max: 240, dec: 0 },
-  fridgeH: { label: 'In the fridge', unit: 'h', step: 1, min: 1, max: 72, dec: 0 },
+  fridgeH: { label: 'In the fridge', unit: 'h', step: 1, min: 1, max: 96, dec: 0 },
+  fridgeT: { label: 'Fridge', unit: '°C', step: 1, min: 1, max: 12, dec: 0 },
   temper: { label: 'Out before baking', unit: 'min', step: 15, min: 0, max: 360, dec: 0 },
 };
 
@@ -98,6 +103,8 @@ const COMMON = {
   oil: 0,
   sugar: 0,
   boost: 0,
+  manual: false,
+  idy: 0.1,
   fy: 0.1,
   buf: 15,
   mix: 30,
@@ -113,6 +120,7 @@ const COMMON = {
   fridge: false,
   fridgeRest: 60,
   fridgeH: 16,
+  fridgeT: 4,
   temper: 120,
   plan: '',
 } satisfies Partial<Settings>;
@@ -160,6 +168,7 @@ export function normalise(kind: Kind, raw: unknown): Settings {
   if (typeof src.preT === 'number' && Number.isFinite(src.preT)) out.preT = round(clamp(src.preT, PRE_T.min, PRE_T.max), PRE_T.dec);
   if (typeof src.fridge === 'boolean') out.fridge = src.fridge;
   if (typeof src.split === 'boolean') out.split = src.split;
+  if (typeof src.manual === 'boolean') out.manual = src.manual;
   if (typeof src.plan === 'string' && START_RE.test(src.plan)) out.plan = src.plan;
   if (Array.isArray(src.flours)) {
     const flours = src.flours

@@ -10,7 +10,7 @@ import {
   calc,
   clockChange,
   describeClockChange,
-  directExtraHours,
+  directChart,
   doughVars,
   FIRST_HYD,
   fmtClock,
@@ -19,6 +19,7 @@ import {
   fmtWeekday,
   g0,
   FRIDGE,
+  FRIDGE_MAX,
   g1,
   MIXERS,
   nearest,
@@ -96,10 +97,17 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
   const m = c.model;
   // A direct dough's chart is its bulk ferment: when it's up, you ball the dough.
   const direct = kind === 'direct';
+  const pre = m.name.toLowerCase();
+  // The page's lock. The chart and the times are scheduling and stay usable; the yeast itself doesn't.
+  const locked = useLocked();
   const [reveal, setReveal] = useState(0);
-  // A long ball proof counts toward a direct dough's ferment: the chart shows the yeast it gets.
-  const extra = direct ? directExtraHours(s) : 0;
-  const chart = useMemo(() => (extra ? { ...m, idy: (t: number, h: number) => m.idy(t, h + extra) } : m), [m, extra]);
+  // A direct dough's chart follows its whole schedule: the balls, and any time in the fridge.
+  const chart = useMemo(() => (direct ? { ...m, idy: directChart(s) } : m), [m, direct, s]);
+  // What the chart would use, boost included: shown while you set the yeast yourself.
+  const suggested = chart.idy(c.temp, c.hours) * (1 + s.boost / 100);
+  // Going manual starts from the chart's figure, so nothing jumps.
+  const setManual = (manual: boolean) =>
+    setS((p) => ({ ...p, manual, ...(manual && !p.manual ? { idy: +(c.preIdy * 100).toFixed(3) } : {}) }));
   const onPick = useCallback((t: number, h: number) => setS((p) => ({ ...p, temp: t, hours: h })), [setS]);
   const grid = (list: number[]) => ({
     min: list[0],
@@ -110,26 +118,29 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
       return list[Math.max(0, Math.min(list.length - 1, i + dir))];
     },
   });
-  // The chart is scheduling (how warm, how long), not the recipe's ratios: it stays usable while locked.
   return (
     <Locked.Provider value={false}>
       <section className="card" id="yeast" aria-labelledby="h-yeast" style={mobileOrder(order)}>
         <div className="card-h">
           <h2 id="h-yeast">{m.name} yeast</h2>
-          <span className="hint">Tap a cell to pick temperature × time.</span>
+          <span className="hint">{s.manual ? 'Your own yeast. The times set the schedule.' : 'Tap a cell to pick temperature × time.'}</span>
+        </div>
+        <div className="segmented" role="tablist" aria-label="Where the yeast comes from" data-locked={locked ? '' : undefined}>
+          <button type="button" role="tab" aria-selected={!s.manual} onClick={() => !locked && setManual(false)}>
+            From the chart
+          </button>
+          <button type="button" role="tab" aria-selected={s.manual} onClick={() => !locked && setManual(true)}>
+            Manual
+          </button>
         </div>
         {planner ? <StartRow d={d} /> : null}
-        <Heatmap model={chart} temp={c.temp} hours={c.hours} onPick={onPick} start={start} live={live} after={afterReady(kind, s)} reveal={reveal} />
-        {extra ? (
-          <p className="note">
-            The yeast allows for the {fmtDur(s.fridge ? s.fridgeRest + s.temper : s.proof)} the balls spend at room temperature, {fmtDur(extra * 60)} more
-            than the chart’s usual 2 hours.
-          </p>
-        ) : null}
+        {s.manual ? null : (
+          <Heatmap model={chart} temp={c.temp} hours={c.hours} onPick={onPick} start={start} live={live} after={afterReady(kind, s)} reveal={reveal} />
+        )}
         <div className="grid">
           <Stepper
             big
-            label="Ferment at"
+            label={direct ? 'Bulk at' : 'Ferment at'}
             unit="°C"
             value={c.temp}
             show={(v) => `${v}°`}
@@ -152,8 +163,25 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
             }}
           />
         </div>
+        {s.manual ? (
+          <Locked.Provider value={locked}>
+            <div className="grid">
+              <Stepper {...FIELDS.idy} label={direct ? 'Yeast, % of flour' : `Yeast, % of ${pre} flour`} value={s.idy} onChange={(v) => set('idy', v)} />
+            </div>
+            <p className="note">
+              The chart would use <b>{idyPct(suggested / 100)}</b> for {c.hours} h at {c.temp} °C
+              {direct ? ' and the rest of this schedule' : ''}.{' '}
+              {locked ? null : (
+                <button type="button" className="btn small inline" onClick={() => set('idy', +suggested.toFixed(3))}>
+                  Use it
+                </button>
+              )}
+            </p>
+          </Locked.Provider>
+        ) : null}
+        {direct ? <ColdFerment d={d} locked={locked} /> : null}
         <div className="stats">
-          <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
+          <Stat k={s.manual ? 'IDY · manual' : s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
           <Stat k={`${m.name} yeast`} v={g1(direct ? c.final.yeast : c.pre.yeast)} />
           {live || !tl ? (
             <>
@@ -168,6 +196,45 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
           )}
         </div>
       </section>
+    </Locked.Provider>
+  );
+}
+
+/**
+ * A direct dough's cold ferment: a cold bulk is a fridge row on the chart; balls in the fridge are
+ * this switch. Either way the fridge time counts toward the yeast. Part of the recipe, so it locks.
+ */
+function ColdFerment({ d, locked }: { d: Dough; locked: boolean }) {
+  const { s, set, c } = d;
+  const coldBulk = c.temp <= FRIDGE_MAX;
+  return (
+    <Locked.Provider value={locked}>
+      <div className="sub-h">Cold ferment</div>
+      <p className="note">
+        {coldBulk ? (
+          <>
+            A <b>{c.temp} °C</b> bulk is a cold bulk in the fridge. Ball it cold, then give the balls about 3–4 hours to warm up and proof.
+          </>
+        ) : (
+          <>
+            For a cold bulk, ferment it at <b>{FRIDGE_MAX} °C or colder</b>: the fridge rows on the chart. To cold ferment the balls instead, put them in
+            the fridge.
+          </>
+        )}
+      </p>
+      <Switch
+        checked={s.fridge}
+        onChange={(v) => set('fridge', v)}
+        label="Balls in the fridge"
+        sub="Ball after the bulk, rest them, then hold them cold until the day. The fridge time counts toward the yeast."
+      />
+      {s.fridge ? (
+        <div className="grid">
+          <Field d={d} k="fridgeH" />
+          <Field d={d} k="fridgeT" />
+        </div>
+      ) : null}
+      {coldBulk && !s.fridge && s.proof < 180 ? <p className="warn">Balls from a cold bulk need about 3–4 hours to warm up and proof. Give them longer under Timing.</p> : null}
     </Locked.Provider>
   );
 }
@@ -241,12 +308,15 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
         ))}
       </div>
       {kind === 'direct' ? (
-        <>
-          <div className="sub-h">Yeast</div>
-          <div className="grid">
-            <Field d={d} k="boost" />
-          </div>
-        </>
+        // The yeast boost tunes the chart; with your own yeast there's nothing to tune.
+        d.s.manual ? null : (
+          <>
+            <div className="sub-h">Yeast</div>
+            <div className="grid">
+              <Field d={d} k="boost" />
+            </div>
+          </>
+        )
       ) : (
         <>
           <div className="sub-h">{c.model.name}</div>
@@ -263,7 +333,7 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
             <div className="fixed-val">100</div>
           </div>
         )}
-            <Field d={d} k="boost" />
+            {d.s.manual ? null : <Field d={d} k="boost" />}
             <Field d={d} k="fy" />
           </div>
         </>
@@ -417,9 +487,13 @@ export function TimingFields({ d }: { d: Dough }) {
           </>
         )}
         <Field d={d} k={s.fridge ? 'fridgeRest' : 'proof'} />
+        {kind === 'direct' && s.fridge ? <Field d={d} k="temper" /> : null}
       </div>
-      <Switch checked={s.fridge} onChange={(v) => set('fridge', v)} label="Bake later" sub="Rest the balls about an hour, then hold them in the fridge." />
-      {s.fridge ? (
+      {/* A direct dough's cold ferment is set in its Yeast card, since it changes the yeast. */}
+      {kind === 'direct' ? null : (
+        <Switch checked={s.fridge} onChange={(v) => set('fridge', v)} label="Bake later" sub="Rest the balls about an hour, then hold them in the fridge." />
+      )}
+      {s.fridge && kind !== 'direct' ? (
         <div className="grid">
           <Field d={d} k="fridgeH" />
           <Field d={d} k="temper" />

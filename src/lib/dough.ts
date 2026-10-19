@@ -1,4 +1,5 @@
-import type { Kind, Settings } from '../../shared/recipe';
+import { DEFAULTS, type Kind, type Settings } from '../../shared/recipe';
+import { doughMultiplier, eqHours, freshForEqHours, IDY_PER_FRESH, rateAt, stretch, tauHours, type Segment } from './craig';
 
 /* ---------- preferment yeast models ---------- */
 
@@ -48,30 +49,88 @@ export const MODELS: Record<Kind, Model> = {
   direct: {
     kind: 'direct',
     name: 'Dough',
-    temps: range(14, 28),
-    hours: [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 24],
-    // Fitted to Craig's yeast chart (pizzamaking.com) and Neapolitan doughs: the EU's Neapolitan rules,
-    // Salvo, Shipton Mill, Fuego. They agree within about ±30%. Temperature matters more than for the
-    // preferments: activity doubles about every 4.5 °C here.
-    idy: model(0.05, 21, 12, 4.5, 1.1),
+    // From the fridge to a hot kitchen; rows at FRIDGE_MAX and below are a cold bulk in the fridge.
+    temps: range(2, 32),
+    hours: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72, 96],
+    // The default schedule; a recipe's chart follows its own (see directChart).
+    idy: (t, h) => directIdy(DEFAULTS.direct, t, h),
     ready:
       'Ready to ball when it has about doubled, feels airy and slightly domed, and shows bubbles on the sides and bottom of the container.',
-    note: 'About 0.05% IDY at 21 °C for a 12-hour bulk, fitted to Craig’s yeast chart from pizzamaking.com and to Neapolitan doughs (the EU’s Neapolitan rules among them), with activity doubling about every 4.5 °C. It assumes a 2-hour ball proof; a longer one counts as more time, so it takes less yeast. That’s for a dough that about doubles: home recipes such as Forkish’s or King Arthur’s use 1.5–3× more for a bigger rise. Short bulks of 2–3 hours may need a little less than the chart says.',
+    note: 'Craig’s yeast chart from pizzamaking.com, for a dough that about doubles, worked out over the whole schedule: the bulk, the balls, and any time in the fridge, following the dough’s own temperature as it cools down in the fridge and warms up again afterwards (the first warm hours in the fridge do a lot of the work). A 4 °C fridge runs at about a twelfth of room speed. Salt, oil and sugar slow it a little, water speeds it up. Home recipes such as Forkish’s or King Arthur’s use 1.5–3× more yeast for a bigger rise.',
   },
 };
 
 export const nearest = (list: number[], v: number) =>
   list.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
 
-/**
- * A direct dough's chart assumes a 2-hour ball proof at room temperature. Longer is more time
- * fermenting, so it counts as extra bulk hours and the dough gets less yeast. Hours in the fridge
- * barely count.
- */
-export function directExtraHours(s: Settings): number {
-  const room = s.fridge ? s.fridgeRest + s.temper : s.proof;
-  return Math.max(0, room - 120) / 60;
+/* ---------- direct dough yeast ---------- */
+
+/** A chart temperature this cold is the fridge: a cold bulk. */
+export const FRIDGE_MAX = 8;
+/** A chart cell outside these (IDY, % of flour) is off Craig's chart: too much to rise, or too little to weigh. */
+export const CHART_MIN = 0.003;
+export const CHART_MAX = 1.5;
+
+/** What happens after a direct dough's bulk: the balls proof, or rest, go in the fridge and warm up again. */
+function afterBulk(s: Settings): Segment[] {
+  return s.fridge
+    ? [
+        { envC: s.room, hours: s.fridgeRest / 60, pieceG: s.bw },
+        { envC: s.fridgeT, hours: s.fridgeH, pieceG: s.bw },
+        { envC: s.room, hours: s.temper / 60, pieceG: s.bw },
+      ]
+    : [{ envC: s.room, hours: s.proof / 60, pieceG: s.bw }];
 }
+
+const idyFor = (s: Settings, eq: number) =>
+  freshForEqHours(eq) * doughMultiplier({ hyd: s.hyd, salt: s.salt, oil: s.oil, sugar: s.sugar }) * IDY_PER_FRESH;
+
+/**
+ * A direct dough's IDY (% of flour) for a bulk of `h` hours at `t` °C, then the rest of its schedule:
+ * Craig's chart over the dough's own temperature, from the mixer onwards.
+ */
+export function directIdy(s: Settings, t: number, h: number): number {
+  const bulk = stretch(s.ddt, t, h, tauHours(s.balls * s.bw * (1 + s.waste / 100)));
+  return idyFor(s, bulk.eq + eqHours(afterBulk(s), roundC(bulk.endC)));
+}
+
+/** How warm the dough is when it's balled, to 0.1 °C: the chart works out what follows once per temperature. */
+const roundC = (c: number) => Math.round(c * 10) / 10;
+
+/**
+ * The whole chart for a direct dough's schedule, fast: each row's bulk is walked once, hour by hour,
+ * and what comes after only depends on how warm the dough is when it's balled.
+ */
+export function directChart(s: Settings): (t: number, h: number) => number {
+  const bulkG = s.balls * s.bw * (1 + s.waste / 100);
+  const tau = tauHours(bulkG);
+  const after = afterBulk(s);
+  const rows = new Map<number, { eq: number[]; endC: number[] }>();
+  const tails = new Map<number, number>();
+  const tail = (c: number) => {
+    const k = roundC(c);
+    let v = tails.get(k);
+    if (v === undefined) tails.set(k, (v = eqHours(after, k)));
+    return v;
+  };
+  return (t, h) => {
+    if (!Number.isInteger(h) || h < 0 || h > 96) return directIdy(s, t, h);
+    let row = rows.get(t);
+    if (!row) {
+      row = { eq: [0], endC: [s.ddt] };
+      for (let i = 1; i <= 96; i++) {
+        const step = stretch(row.endC[i - 1], t, 1, tau);
+        row.eq.push(row.eq[i - 1] + step.eq);
+        row.endC.push(step.endC);
+      }
+      rows.set(t, row);
+    }
+    return idyFor(s, row.eq[h] + tail(row.endC[h]));
+  };
+}
+
+/** How fast yeast works at `t` °C next to 21 °C: "a 4 °C fridge runs at about a twelfth of room speed". */
+export const yeastSpeed = rateAt;
 
 /* ---------- final dough proofing ---------- */
 
@@ -258,7 +317,9 @@ export function calc(kind: Kind, s: Settings): Calc {
   const sugar = s.sugar / 100;
   // A direct dough has no preferment: the chart's yeast goes into the one mix, for all the flour.
   const direct = kind === 'direct';
-  const chartIdy = (m.idy(temp, hours + (direct ? directExtraHours(s) : 0)) * (1 + s.boost / 100)) / 100;
+  // The chart's yeast, % of the preferment's flour (a direct dough's flour), or your own.
+  const charted = direct ? directIdy(s, temp, hours) : m.idy(temp, hours);
+  const chartIdy = (s.manual ? s.idy : charted * (1 + s.boost / 100)) / 100;
   const bp = direct ? 0 : Math.min(Math.max(s.bp, 0), 100) / 100;
   const bh = (kind === 'poolish' ? 100 : s.bh) / 100;
   const finalIdy = direct ? chartIdy * 100 : s.fy * roomFactor(s.room);
@@ -312,6 +373,10 @@ export function calc(kind: Kind, s: Settings): Calc {
     );
   else if (fW < FL * 0.05)
     warnings.push(`Only ${Math.round(fW)} g of water is left for the final mix, so it may be hard to bring together. Lower the ${m.name.toLowerCase()} share.`);
+  if (direct && !s.manual && charted > CHART_MAX)
+    warnings.push(`${hours} h at ${temp} °C is too short for the dough to rise on Craig’s chart: give it longer or somewhere warmer.`);
+  else if (direct && !s.manual && charted < CHART_MIN)
+    warnings.push(`${hours} h at ${temp} °C is longer than Craig’s chart goes: shorten it or ferment it cooler.`);
   if ((!direct && bY < 0.3) || (fY > 0 && fY < 0.3))
     warnings.push(
       'Some yeast amounts are under 0.3 g. Weigh them on a 0.01 g scale, or dissolve 1 g of yeast in 100 g of the recipe’s water and weigh the solution (10 g holds 0.1 g of yeast).',
@@ -411,7 +476,7 @@ export function timeline(kind: Kind, s: Settings, start: Date): Timeline {
   const steps: Step[] =
     kind === 'direct'
       ? [
-          { key: 'start', at: start, title: 'Mix the dough', sub: `Mix to ${s.ddt} °C, then ${H} h bulk at ${T} °C` },
+          { key: 'start', at: start, title: 'Mix the dough', sub: `Mix to ${s.ddt} °C, then ${H} h bulk at ${T} °C${T <= FRIDGE_MAX ? ' in the fridge' : ''}` },
           { key: 'ball', at: ready, title: 'Divide and ball', sub: usable ? `Bulk done · ${usable}` : `After ${H} h bulk` },
         ]
       : [

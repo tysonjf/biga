@@ -8,6 +8,9 @@ import {
   calc,
   clockChange,
   describeClockChange,
+  CHART_MAX,
+  directChart,
+  directIdy,
   doughVars,
   FIRST_HYD,
   giorilli,
@@ -304,31 +307,79 @@ describe('direct dough', () => {
     expect(c.warnings).toEqual([]);
   });
 
-  it('matches Craig’s yeast chart and the Neapolitan rules within about a third', () => {
-    const near = (got: number, want: number) => expect(Math.abs(got / want - 1)).toBeLessThanOrEqual(0.35);
-    // Craig's chart (pizzamaking.com), total hours less the 2 h ball proof
-    near(MODELS.direct.idy(21.1, 12), 0.048); // 70 °F, 14 h
-    near(MODELS.direct.idy(18.3, 22), 0.04); // 65 °F, 24 h
-    near(MODELS.direct.idy(21.1, 6), 0.096); // 70 °F, 8 h
-    near(MODELS.direct.idy(23.9, 6), 0.056); // 75 °F, 8 h
-    near(MODELS.direct.idy(25, 5), 0.056); // EU Neapolitan rules: 3 g fresh yeast per litre, 25 °C, 2 h bulk + 4–6 h balls
-    near(MODELS.direct.idy(17, 24), 0.05); // Fuego: 1.5 g fresh per kg, 2 h bulk + 24 h balls at 16–18 °C
+  it('reproduces Craig’s yeast chart at a steady temperature, fridge to warm kitchen', () => {
+    // Hours to the end point for a fresh-yeast %, straight from Craig's table; IDY is a third of fresh.
+    const craig: [number, number, number][] = [
+      [40, 67, 0.5],
+      [40, 40, 1],
+      [45, 60, 0.3],
+      [60, 40, 0.1],
+      [65, 21, 0.15],
+      [70, 14, 0.15],
+      [70, 8, 0.3],
+      [75, 7, 0.2],
+    ];
+    for (const [F, hours, fresh] of craig) {
+      const C = (F - 32) / 1.8;
+      // Held at one temperature the whole time, in Craig's reference dough (63%, 2.8% salt).
+      const s = direct({ ddt: C, room: C, hyd: 63, salt: 2.8, proof: 0 });
+      expect(Math.abs(directIdy(s, C, hours) / (fresh / 3) - 1)).toBeLessThan(0.12);
+    }
   });
 
-  it('counts a ball proof longer than 2 hours as more ferment, so less yeast', () => {
+  it('cold ferments the balls: the fridge hours count toward the yeast', () => {
+    const room = calc('direct', direct({ hours: 2, proof: 120 })).preIdy;
+    const cold = (o: Partial<Settings>) => calc('direct', direct({ hours: 2, fridge: true, fridgeRest: 60, fridgeH: 44, fridgeT: 4, temper: 180, ...o })).preIdy;
+    expect(cold({})).toBeLessThan(room);
+    expect(cold({ fridgeH: 72 })).toBeLessThan(cold({}));
+    expect(cold({ fridgeT: 2 })).toBeGreaterThan(cold({}));
+    expect(cold({ fridgeT: 7 })).toBeLessThan(cold({}));
+  });
+
+  it('lands a 48-hour cold dough near the 0.08% IDY such a recipe uses', () => {
+    // 4 × 280 g at 73%, 2.5% salt: 2 h bulk, ball, 1 h rest, 44 h at 4 °C, 3 h out.
+    const s = direct({ bw: 280, hyd: 73, salt: 2.5, hours: 2, fridge: true, fridgeRest: 60, fridgeH: 44, fridgeT: 4, temper: 180 });
+    expect(Math.abs((calc('direct', s).preIdy * 100) / 0.08 - 1)).toBeLessThan(0.25);
+  });
+
+  it('cold bulks on the fridge rows of the chart, slower than the room', () => {
+    const fridge = calc('direct', direct({ temp: 4, hours: 48, proof: 240 }));
+    const room = calc('direct', direct({ temp: 21, hours: 48, proof: 240 }));
+    expect(fridge.preIdy).toBeGreaterThan(room.preIdy * 3);
+    expect(fridge.preIdy * 100).toBeGreaterThan(0.05);
+    expect(fridge.preIdy * 100).toBeLessThan(0.3);
+  });
+
+  it('counts the dough cooling down in the fridge: a warm start needs less yeast', () => {
+    const warm = directIdy(direct({ ddt: 26 }), 4, 24);
+    const cool = directIdy(direct({ ddt: 18 }), 4, 24);
+    expect(warm).toBeLessThan(cool);
+  });
+
+  it('counts a longer ball proof as more ferment, so less yeast', () => {
     const two = calc('direct', direct({ hours: 4, proof: 120 }));
     const six = calc('direct', direct({ hours: 4, proof: 360 }));
-    expect(six.preIdy * 100).toBeCloseTo(MODELS.direct.idy(21, 8), 9);
     expect(six.final.yeast).toBeLessThan(two.final.yeast);
-    expect(calc('direct', direct({ hours: 4, proof: 60 })).preIdy).toBeCloseTo(two.preIdy, 12);
-    // Bake later: the room rest and the warm-up count, the fridge hours don't.
-    const cold = calc('direct', direct({ hours: 4, fridge: true, fridgeRest: 60, temper: 180, fridgeH: 48 }));
-    expect(cold.preIdy * 100).toBeCloseTo(MODELS.direct.idy(21, 6), 9);
+  });
+
+  it('draws the chart with the same numbers as the recipe', () => {
+    const s = direct({ hours: 2, fridge: true, fridgeH: 48, ddt: 24 });
+    const chart = directChart(s);
+    for (const [t, h] of [[21, 2], [4, 48], [30, 1], [12, 96]] as const) expect(chart(t, h)).toBeCloseTo(directIdy(s, t, h), 9);
+  });
+
+  it('says so when a cell is off Craig’s chart', () => {
+    // An hour from mixing to baking can't raise a dough.
+    const c = calc('direct', direct({ ddt: 16, room: 16, temp: 16, hours: 1, proof: 0 }));
+    expect(c.preIdy * 100).toBeGreaterThan(CHART_MAX);
+    expect(c.warnings.join(' ')).toMatch(/too short for the dough to rise/);
+    expect(calc('direct', direct({ temp: 32, hours: 96 })).warnings.join(' ')).toMatch(/longer than Craig’s chart goes/);
   });
 
   it('takes its yeast from the chart, boost included, and ignores the preferment settings', () => {
-    const c = calc('direct', direct({ temp: 21, hours: 6, boost: 20, fy: 0.5, bp: 50 }));
-    expect(c.preIdy * 100).toBeCloseTo(MODELS.direct.idy(21, 6) * 1.2, 9);
+    const s = direct({ temp: 21, hours: 6, boost: 20, fy: 0.5, bp: 50 });
+    const c = calc('direct', s);
+    expect(c.preIdy * 100).toBeCloseTo(directIdy(s, 21, 6) * 1.2, 9);
     expect(c.finalIdy).toBeCloseTo(c.preIdy * 100, 9);
     expect(c.pre.flour).toBe(0);
   });
@@ -384,6 +435,36 @@ describe('direct dough', () => {
 
   it('is a recipe type of its own', () => {
     expect(normalise('direct', {})).toEqual(DEFAULTS.direct);
+  });
+});
+
+describe('manual yeast', () => {
+  it('uses your own IDY for a direct dough, and ignores the boost', () => {
+    const c = calc('direct', direct({ manual: true, idy: 0.08, boost: 50 }));
+    expect(c.preIdy * 100).toBeCloseTo(0.08, 9);
+    expect(c.final.yeast).toBeCloseTo(c.flour * 0.0008, 9);
+    expect(c.warnings).toEqual([]);
+  });
+
+  it('uses your own IDY for a preferment, as a share of its flour', () => {
+    const c = calc('biga', biga({ manual: true, idy: 0.5 }));
+    expect(c.preIdy * 100).toBeCloseTo(0.5, 9);
+    expect(c.pre.yeast).toBeCloseTo(c.pre.flour * 0.005, 9);
+    // The final dough's yeast is its own setting, as before.
+    expect(c.final.yeast).toBeCloseTo(c.flour * 0.001, 9);
+  });
+
+  it('keeps the schedule: the times still come from the ferment', () => {
+    const start = new Date(2026, 9, 20, 9, 0);
+    const a = timeline('direct', direct({ manual: true, idy: 0.1, hours: 6 }), start);
+    const b = timeline('direct', direct({ hours: 6 }), start);
+    expect(a.bake.getTime()).toBe(b.bake.getTime());
+  });
+
+  it('stores it, in range', () => {
+    expect(normalise('direct', {})).toMatchObject({ manual: false, fridgeT: 4 });
+    expect(normalise('direct', { manual: true, idy: 0.0825 })).toMatchObject({ manual: true, idy: 0.083 });
+    expect(normalise('biga', { idy: 9, fridgeT: 40, manual: 'yes' })).toMatchObject({ idy: 3, fridgeT: 12, manual: false });
   });
 });
 
