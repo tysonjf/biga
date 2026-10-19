@@ -75,6 +75,8 @@ export function Heatmap({ model, temp, hours, onPick, start, live, after, reveal
   const wrap = useRef<HTMLDivElement>(null);
   const locked = useLocked();
   const { temps, hours: H, idy } = model;
+  // A direct dough's chart is its bulk ferment: the first column time is when to ball it.
+  const direct = model.kind === 'direct';
   const pre = model.name.toLowerCase();
   // A clock change anywhere across the chart shifts the later column times by an hour.
   const change = start ? clockChange(start, new Date(start.getTime() + (H.at(-1)! * 60 + after) * 60_000)) : null;
@@ -136,7 +138,7 @@ export function Heatmap({ model, temp, hours, onPick, start, live, after, reveal
                 °C
                 {start ? (
                   <>
-                    <span className="bt lbl">Ready</span>
+                    <span className="bt lbl">{direct ? 'Ball' : 'Ready'}</span>
                     <span className="bt lbl bake">Bake</span>
                   </>
                 ) : null}
@@ -167,7 +169,7 @@ export function Heatmap({ model, temp, hours, onPick, start, live, after, reveal
         </table>
       </div>
       <div className="legend">
-        <span>IDY % of {model.name.toLowerCase()} flour</span>
+        <span>IDY % of {direct ? 'flour' : `${pre} flour`}</span>
         <span className="scale">
           <span>{lo.toFixed(2)}</span>
           <span className="sw" aria-hidden="true">
@@ -179,7 +181,8 @@ export function Heatmap({ model, temp, hours, onPick, start, live, after, reveal
         </span>
         {start ? (
           <span className="legend-note">
-            {live ? 'Column times if you start now' : 'Column times'}: when the {pre} is ready, and when the dough is ready to bake.
+            {live ? 'Column times if you start now' : 'Column times'}: {direct ? 'when to ball the dough' : `when the ${pre} is ready`}, and when the dough
+            is ready to bake.
             {change ? ` ${describeClockChange(change)}, and the times allow for it.` : null}
           </span>
         ) : null}

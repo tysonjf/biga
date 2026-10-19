@@ -22,6 +22,8 @@
   --biga-soft: #f8e6db;
   --poolish: #4f7330;
   --poolish-soft: #e6eedb;
+  --direct: #8a6100;
+  --direct-soft: #f6ecd3;
   --warn-bg: #fbf0d6;
   --warn-ink: #714b0b;
   --cold-bg: #e3eef6;
@@ -67,7 +69,7 @@
     --panel: #1f1b18; --panel-2: #2a2521; --ink: #f4eee6; --ink-2: #ddd4c8; --muted: #a59a8d;
     --line: #2f2a25; --line-strong: #463f37;
     --accent: #f0885a; --accent-press: #f6a07a; --accent-ink: #210e05; --accent-soft: #3a241a;
-    --biga: #f0885a; --biga-soft: #3a241a; --poolish: #a9c977; --poolish-soft: #26301c;
+    --biga: #f0885a; --biga-soft: #3a241a; --poolish: #a9c977; --poolish-soft: #26301c; --direct: #e8c46a; --direct-soft: #352a14;
     --warn-bg: #3a2e14; --warn-ink: #f2d38f; --cold-bg: #172b3a; --cold-ink: #a9d3f2; --danger: #ff8a7f;
     --dough: #efe2cd; --dough-shade: #cdb48d;
     --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.3);
@@ -83,7 +85,7 @@
   --panel: #1f1b18; --panel-2: #2a2521; --ink: #f4eee6; --ink-2: #ddd4c8; --muted: #a59a8d;
   --line: #2f2a25; --line-strong: #463f37;
   --accent: #f0885a; --accent-press: #f6a07a; --accent-ink: #210e05; --accent-soft: #3a241a;
-  --biga: #f0885a; --biga-soft: #3a241a; --poolish: #a9c977; --poolish-soft: #26301c;
+  --biga: #f0885a; --biga-soft: #3a241a; --poolish: #a9c977; --poolish-soft: #26301c; --direct: #e8c46a; --direct-soft: #352a14;
   --warn-bg: #3a2e14; --warn-ink: #f2d38f; --cold-bg: #172b3a; --cold-ink: #a9d3f2; --danger: #ff8a7f;
   --dough: #efe2cd; --dough-shade: #cdb48d;
   --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.3);
@@ -316,6 +318,7 @@ h1, h2, h3, p { margin: 0; }
 }
 .chip.biga { background: var(--biga-soft); color: var(--biga); }
 .chip.poolish { background: var(--poolish-soft); color: var(--poolish); }
+.chip.direct { background: var(--direct-soft); color: var(--direct); }
 .chip.plain { background: var(--panel-2); color: var(--muted); }
 .chip.base.red { background: var(--red-soft); color: var(--red); }
 .chip.base.white { background: var(--white-soft); color: var(--white); }
@@ -326,6 +329,7 @@ h1, h2, h3, p { margin: 0; }
   font: 750 22px/1 var(--display); color: var(--panel); background: var(--biga);
 }
 .kind-badge.poolish { background: var(--poolish); }
+.kind-badge.direct { background: var(--direct); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip-btn {

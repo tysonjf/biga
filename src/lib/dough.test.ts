@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, normalise, type Settings } from '../../shared/recipe';
 import {
+  afterReady,
   bakeStatus,
   balance,
   blend,
@@ -8,6 +9,7 @@ import {
   clockChange,
   describeClockChange,
   doughVars,
+  FIRST_HYD,
   giorilli,
   MODELS,
   nextAt,
@@ -21,6 +23,7 @@ import {
 
 const biga = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.biga), ...o });
 const poolish = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.poolish), ...o });
+const direct = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.direct), ...o });
 
 describe('yeast models', () => {
   it('keeps the original biga chart: 0.3% at 18 °C for 16 h', () => {
@@ -258,6 +261,107 @@ describe('recipe amounts by name', () => {
     expect(v).toMatchObject({ flour: Math.round(c.flour), water: Math.round(c.water), biga: Math.round(c.pre.total), oil: Math.round(c.final.oil) });
     expect(v).toMatchObject({ balls: 4, hydration: 72 });
     expect(Object.keys(Object.fromEntries(doughVars('poolish', poolish(), calc('poolish', poolish())).map((x) => [x.name, 1])))).toContain('poolish');
+  });
+});
+
+describe('holding back water', () => {
+  const hydAfterFirst = (kind: 'biga' | 'poolish' | 'direct', s: Settings) => {
+    const c = calc(kind, s);
+    return (c.pre.water + c.holdBack!.first) / c.flour;
+  };
+
+  it('brings the whole dough to 60% first, counting the preferment’s water, then the rest', () => {
+    for (const [kind, s] of [['biga', biga()], ['poolish', poolish()], ['direct', direct()]] as const) {
+      const c = calc(kind, s);
+      expect(c.holdBack).not.toBeNull();
+      expect(c.holdBack!.first + c.holdBack!.rest).toBe(Math.round(c.final.water));
+      expect(hydAfterFirst(kind, s)).toBeCloseTo(FIRST_HYD / 100, 2);
+    }
+  });
+
+  it('holds nothing back from a dough that isn’t wetter than 60%', () => {
+    expect(calc('biga', biga({ hyd: 60 })).holdBack).toBeNull();
+    expect(calc('direct', direct({ hyd: 58 })).holdBack).toBeNull();
+  });
+
+  it('holds nothing back when the preferment already brings the dough past 60%', () => {
+    // A 65% share of 100% poolish is 65% hydration before any more water goes in.
+    expect(calc('poolish', poolish({ bp: 65, hyd: 75 })).holdBack).toBeNull();
+  });
+});
+
+describe('direct dough', () => {
+  it('is mixed all at once: no preferment, every ingredient in the one mix', () => {
+    const s = direct();
+    const c = calc('direct', s);
+    expect(c.pre).toEqual({ flour: 0, water: 0, yeast: 0, total: 0 });
+    expect(c.final.flour).toBeCloseTo(c.flour, 9);
+    expect(c.final.water).toBeCloseTo(c.flour * 0.65, 9);
+    expect(c.final.yeast).toBeCloseTo(c.flour * c.preIdy, 9);
+    const sum = c.final.flour + c.final.water + c.final.salt + c.final.oil + c.final.sugar + c.final.yeast;
+    expect(sum).toBeCloseTo(c.dough, 6);
+    expect(c.bigaWater).toBeNull();
+    expect(c.warnings).toEqual([]);
+  });
+
+  it('takes its yeast from the chart, boost included, and ignores the preferment settings', () => {
+    const c = calc('direct', direct({ temp: 21, hours: 6, boost: 20, fy: 0.5, bp: 50 }));
+    expect(c.preIdy * 100).toBeCloseTo(MODELS.direct.idy(21, 6) * 1.2, 9);
+    expect(c.finalIdy).toBeCloseTo(c.preIdy * 100, 9);
+    expect(c.pre.flour).toBe(0);
+  });
+
+  it('works out the water for the one mix', () => {
+    const c = calc('direct', direct());
+    // No preferment to warm or cool it: flour, water and mixer heat land on the target.
+    const s = direct();
+    const w = c.mixWater!.water;
+    const cf = c.flour * 1.6;
+    const cw = c.final.water * 4.18;
+    expect((cf * s.flourT + cw * w) / (cf + cw) + s.friction).toBeCloseTo(s.ddt, 6);
+  });
+
+  it('keeps flours in one blend', () => {
+    const s = direct({ split: true, flours: [{ name: 'A', pct: 80, fin: 20 }, { name: 'B', pct: 20, fin: 80 }] });
+    const c = calc('direct', s);
+    expect(c.split).toBe(false);
+    expect(c.flours[0].fin / c.flour).toBeCloseTo(0.8, 9);
+  });
+
+  it('balls the dough when the chart’s bulk is up, then proofs the balls', () => {
+    const start = new Date(2026, 9, 20, 9, 0);
+    const s = direct({ hours: 6, proof: 120, mix: 30, bulk: 45 });
+    const tl = timeline('direct', s, start);
+    expect(tl.steps.map((st) => st.key)).toEqual(['start', 'ball', 'bake']);
+    expect(tl.steps[1].at.getHours()).toBe(15);
+    expect(tl.bake.getHours()).toBe(17);
+    expect(afterReady('direct', s)).toBe(120);
+    expect(afterReady('biga', biga({ mix: 30, bulk: 45, proof: 120 }))).toBe(195);
+  });
+
+  it('holds the balls in the fridge to bake later', () => {
+    const start = new Date(2026, 9, 20, 9, 0);
+    const tl = timeline('direct', direct({ hours: 4, fridge: true, fridgeRest: 60, fridgeH: 24, temper: 120 }), start);
+    expect(tl.steps.map((st) => st.key)).toEqual(['start', 'ball', 'fridge', 'out', 'bake']);
+    expect(tl.bake.getTime() - start.getTime()).toBe((4 * 60 + 60 + 24 * 60 + 120) * 60_000);
+  });
+
+  it('is bulk fermenting until it’s balled', () => {
+    const start = new Date(2026, 9, 20, 9, 0);
+    const tl = timeline('direct', direct({ hours: 6 }), start);
+    expect(bakeStatus('direct', tl, new Date(2026, 9, 20, 11, 0)).title).toBe('Bulk fermenting');
+    expect(bakeStatus('direct', tl, new Date(2026, 9, 20, 16, 0)).title).toBe('Balls proofing');
+  });
+
+  it('names its amounts without a preferment', () => {
+    const s = direct();
+    const names = doughVars('direct', s, calc('direct', s)).map((v) => v.name);
+    expect(names).toContain('flour');
+    expect(names).not.toContain('direct');
+  });
+
+  it('is a recipe type of its own', () => {
+    expect(normalise('direct', {})).toEqual(DEFAULTS.direct);
   });
 });
 

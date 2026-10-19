@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { KIND_NAME, type Kind, type Recipe } from '../../shared/recipe';
+import { KIND_NAME, KINDS, type Kind, type Recipe } from '../../shared/recipe';
 import { useCreateRecipe } from '../lib/actions';
 import { BAKE_GRACE_MIN, MODELS, nearest, parseStart, timeline } from '../lib/dough';
 import { useBakes, usePlayground, useRecipes } from '../lib/query';
@@ -22,6 +22,12 @@ function ago(ts: number) {
   if (abs < 86400 * 7) return rtf.format(Math.round(s / 86400), 'day');
   return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
+
+const KIND_BLURB: Record<Kind, string> = {
+  biga: 'Stiff, 45% hydration. Deep, nutty flavour and strong structure.',
+  poolish: 'Batter-like, 100% hydration. Extensible dough, open and airy crumb.',
+  direct: 'No preferment: everything mixed at once, a bulk ferment, then balls. Simple, same-day or overnight.',
+};
 
 function summary(kind: Kind, s: Recipe['settings']) {
   const m = MODELS[kind];
@@ -113,7 +119,7 @@ export function HomePage() {
 
       {kinds.size > 1 ? (
         <div className="segmented" role="tablist" aria-label="Filter recipes">
-          {(['all', 'biga', 'poolish'] as const).map((k) => (
+          {(['all', ...KINDS] as const).map((k) => (
             <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}>
               {k === 'all' ? 'All' : KIND_NAME[k]}
             </button>
@@ -158,7 +164,7 @@ export function HomePage() {
         <div className="empty">
           <DoughBall />
           <h2>No doughs yet</h2>
-          <p>Start with a stiff biga or a runny poolish, or work out the numbers in the playground and save them as a recipe.</p>
+          <p>Start with a stiff biga, a runny poolish or a direct dough, or work out the numbers in the playground and save them as a recipe.</p>
           <div className="empty-actions">
             <button type="button" className="btn primary" onClick={() => create('biga')}>
               New biga
@@ -166,13 +172,16 @@ export function HomePage() {
             <button type="button" className="btn" onClick={() => create('poolish')}>
               New poolish
             </button>
+            <button type="button" className="btn" onClick={() => create('direct')}>
+              New direct dough
+            </button>
           </div>
         </div>
       )}
 
       <Sheet open={picker} onClose={() => setPicker(false)} title="New recipe">
         <div className="choice-list">
-          {(['biga', 'poolish'] as const).map((k) => (
+          {KINDS.map((k) => (
             <button
               key={k}
               type="button"
@@ -183,14 +192,12 @@ export function HomePage() {
               }}
             >
               <span className={`kind-badge ${k}`} aria-hidden="true">
-                {k === 'biga' ? 'B' : 'P'}
+                {KIND_NAME[k][0]}
               </span>
               <span>
                 <b>{KIND_NAME[k]}</b>
                 <small>
-                  {k === 'biga'
-                    ? 'Stiff, 45% hydration. Deep, nutty flavour and strong structure.'
-                    : 'Batter-like, 100% hydration. Extensible dough, open and airy crumb.'}
+                  {KIND_BLURB[k]}
                 </small>
               </span>
               <Icon name="chevron" size={18} />

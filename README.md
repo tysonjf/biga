@@ -1,9 +1,10 @@
 # Biga
 
-An installable app (PWA) for planning biga and poolish pizza doughs to the hour. It works out the yeast, the water temperature and the timeline, and keeps your recipes in sync across devices.
+An installable app (PWA) for planning biga, poolish and direct pizza doughs to the hour. It works out the yeast, the water temperature and the timeline, and keeps your recipes in sync across devices.
 
 ## How it's organised
 
+- **Three kinds of dough:** a **biga** (stiff preferment), a **poolish** (runny preferment), or a **direct** dough, with no preferment: everything is mixed at once, ferments in bulk, then is balled. For a direct dough the yeast chart is the bulk ferment, and the schedule goes mix, ball, bake.
 - **Recipes** are what you use day to day: the amounts, ferment, timings and notes (the method). The schedule starts **now** and keeps up with the clock, or you can pick when you'll mix the preferment:
   - Pick a time and it means the next time the clock reads it. At 7 pm, 5 pm means 5 pm tomorrow, but a time from the last hour means today, since you've just mixed it.
   - The day shows as Today, Tomorrow or a date, and you can tap it to change it.
@@ -96,6 +97,7 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
   - Turn on **Set flours per stage** to give each flour its own share of each stage, for example all the bread flour in the biga and all the Tipo 00 in the final dough.
   - The Dough card then shows the overall blend that results.
   - The shares in each stage always add up to 100%. Changing one moves the biggest of the other flours, which is usually the main one.
+- **Holding back water:** when the dough is wetter than 60%, the final dough's Water line (and the Dough temperature card) splits it in two. The first part brings the whole dough to 60%, counting the preferment's water, so it mixes strong; drizzle in the rest as it mixes (bassinage). The two parts add up to the water shown.
 - **Oil and sugar:** both are a percentage of the total flour and go into the final mix. Like salt, they're on top of the hydration, which counts water only.
   - A little sugar (1–2%) helps a home oven brown the crust, and keeps an all-biga dough from coming out pale after a long fridge rest.
 - **Dough temperature:** the ball timings assume the dough comes off the mixer at 24–26 °C and the balls proof in an 18–24 °C room.
@@ -147,6 +149,7 @@ shared/         recipe, bake, playground and topping types + validation, used by
 worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts, bakes.ts, playground.ts, toppings.ts
 migrations/     D1 schema. 0003_bakes adds bakes and the playground, and turns any recipe start time from the
                 last week into a bake so a schedule in progress isn't lost. 0003_toppings adds toppings
-                (two 0003s because both shipped separately; they touch different tables)
+                (two 0003s because both shipped separately; they touch different tables). 0004_direct_dough
+                rebuilds recipe, bake and playground to allow 'direct', in an order that keeps every bake
 public/         icons, iOS launch screens, _headers (CSP + caching)
 ```

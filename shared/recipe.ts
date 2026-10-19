@@ -5,8 +5,9 @@
 // without touching the recipe), and adds when the preferment was mixed and notes of its own.
 // The playground is a scratch recipe per preferment that saves as you go.
 
-export type Kind = 'biga' | 'poolish';
-export const KINDS: Kind[] = ['biga', 'poolish'];
+// A direct dough has no preferment: everything is mixed at once and ferments in bulk.
+export type Kind = 'biga' | 'poolish' | 'direct';
+export const KINDS: Kind[] = ['biga', 'poolish', 'direct'];
 
 export type Flour = {
   name: string;
@@ -22,15 +23,15 @@ export type Settings = {
   salt: number; // % of total flour
   oil: number; // % of total flour
   sugar: number; // % of total flour, added in the final mix
-  bp: number; // preferment share, % of total flour
-  bh: number; // preferment hydration, % of preferment flour
-  boost: number; // ± % on the charted preferment yeast
-  fy: number; // final dough IDY, % of total flour, for a 18–24 °C proofing room
-  temp: number; // preferment ferment temperature, °C
-  hours: number; // preferment ferment time, h
-  buf: number; // ± % window on the preferment time
-  mix: number; // final mix, min
-  bulk: number; // bulk rest, min
+  bp: number; // preferment share, % of total flour (not used by a direct dough)
+  bh: number; // preferment hydration, % of preferment flour (not used by a direct dough)
+  boost: number; // ± % on the charted yeast
+  fy: number; // final dough IDY, % of total flour, for a 18–24 °C proofing room (not used by a direct dough)
+  temp: number; // preferment ferment temperature, °C; a direct dough's bulk ferment temperature
+  hours: number; // preferment ferment time, h; a direct dough's bulk ferment time
+  buf: number; // ± % window on the preferment time (a direct dough's bulk)
+  mix: number; // final mix, min (a direct dough's bulk starts as it's mixed)
+  bulk: number; // bulk rest after the final mix, min (not used by a direct dough)
   proof: number; // ball proof at room temperature, min
   flours: Flour[];
   split: boolean; // each flour gets its own share of the preferment and of the final dough
@@ -120,9 +121,11 @@ export const DEFAULTS: Record<Kind, Settings> = {
   biga: { ...COMMON, bp: 75, bh: 45, temp: 18, hours: 16 },
   // The standard overnight poolish: 12–16 h at room temperature (about 21 °C).
   poolish: { ...COMMON, bw: 260, hyd: 68, salt: 2.8, fy: 0.15, bp: 30, bh: 100, temp: 21, hours: 14 },
+  // A same-day dough: everything mixed at once, a bulk ferment at room temperature, then balls.
+  direct: { ...COMMON, bw: 260, hyd: 65, salt: 2.8, fy: 0, bp: 75, bh: 45, temp: 21, hours: 6 },
 };
 
-export const KIND_NAME: Record<Kind, string> = { biga: 'Biga', poolish: 'Poolish' };
+export const KIND_NAME: Record<Kind, string> = { biga: 'Biga', poolish: 'Poolish', direct: 'Direct' };
 
 export const LIMITS = {
   name: 60,
