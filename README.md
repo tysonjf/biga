@@ -113,7 +113,11 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
   - A little sugar (1–2%) helps a home oven brown the crust, and keeps an all-biga dough from coming out pale after a long fridge rest.
 - **Dough temperature:** the ball timings assume the dough comes off the mixer at 24–26 °C and the balls proof in an 18–24 °C room.
   - **Biga water** uses Giorilli's rule: water = 55 − (room + flour), in °C, which lands a biga at about 18–20 °C. At a 21 °C room and 21 °C flour that's 13 °C. When the rule asks for less than 2 °C the app says to use iced water; above 38 °C it warns, since the yeast goes straight into that water.
-  - The final dough's water temperature comes from a mass-weighted energy balance across preferment, flour, water and mixer heat.
+  - **Three ways to work out the water**, picked in the Dough temperature card. Each one's chip shows what it gives, so you can compare; the chosen one shows its working:
+    - **Heat balance** (the default): a mass-weighted energy balance across preferment, flour, water and mixer heat. Water holds about two thirds of a 70% dough's heat, so this stays right with a cold preferment or a hot mixer.
+    - **DDT × 3**, or **× 4** with a preferment (King Arthur, Hamelman, SFBI): water = n × DDT − room − flour − (preferment) − friction factor. The friction factor is 3 × the mixer heat, as it's measured; King Arthur's stand mixer (22–24 °F) is 12–13 °C, Hamelman's spiral (26 °F) 14 °C. Hamelman keeps the same factor in × 4. It treats water as a third of the dough's heat, so it overcorrects for a hot mixer or a cold preferment.
+    - **Base number**, best known as the Neapolitan **rule of 55**: water = base − room − flour. The mixer's heat is built into the base and there's no target; French bakers use 52 (intensive) to 72 (slow mixing).
+    - With a rule of thumb, the card also says what dough temperature the heat balance expects from that water.
   - The preferment counts at its ferment temperature unless you say otherwise under **Biga (or Poolish) into the mix**: **Fridge** (4 °C) for one held back in the fridge, **Room** for one left out once it was ready, or a probed temperature. It stays usable while the recipe is locked, since it's about the day, not the recipe. A cold biga needs much warmer water, so expect the 38 °C warning: let it sit out for a while first.
   - The classic "×4" rule of thumb gets it wrong when most of the water is already in a stiff biga.
   - When the water would need to be below 2 °C, the app gives an ice amount instead.

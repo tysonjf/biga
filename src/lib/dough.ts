@@ -1,4 +1,4 @@
-import { DEFAULTS, type Kind, type Settings } from '../../shared/recipe';
+import { DEFAULTS, type Kind, type Settings, type WaterRule } from '../../shared/recipe';
 import { doughMultiplier, eqHours, freshForEqHours, IDY_PER_FRESH, rateAt, stretch, tauHours, type Segment } from './craig';
 
 /* ---------- preferment yeast models ---------- */
@@ -191,7 +191,7 @@ export type WaterTemp = {
  * plus the heat the mixer adds. Weighted by mass × specific heat, so it stays honest when most of
  * the water is already locked up in a stiff biga.
  */
-export function waterTemp(p: {
+type Mix = {
   preFlour: number;
   preWater: number;
   preTemp: number;
@@ -200,21 +200,45 @@ export function waterTemp(p: {
   water: number;
   ddt: number;
   friction: number;
-}): WaterTemp | null {
-  if (p.water < 1) return null;
+};
+
+const heat = (p: Mix) => {
   const cPre = p.preFlour * C_FLOUR + p.preWater * C_WATER;
   const cFlour = p.flour * C_FLOUR;
   const cWater = p.water * C_WATER;
-  const total = cPre + cFlour + cWater;
-  const water = (total * (p.ddt - p.friction) - cPre * p.preTemp - cFlour * p.flourT) / cWater;
+  return { cPre, cFlour, cWater, total: cPre + cFlour + cWater };
+};
+
+export function waterTemp(p: Mix): WaterTemp | null {
+  if (p.water < 1) return null;
+  const { cPre, cFlour, cWater, total } = heat(p);
+  return finishWater((total * (p.ddt - p.friction) - cPre * p.preTemp - cFlour * p.flourT) / cWater, p.water);
+}
+
+/** The dough temperature the heat balance expects from water at `waterC`, °C. */
+export function doughTempFrom(p: Mix, waterC: number): number {
+  const { cPre, cFlour, cWater, total } = heat(p);
+  return (cPre * p.preTemp + cFlour * p.flourT + cWater * waterC) / total + p.friction;
+}
+
+/** Water at a temperature: below 2 °C, part of it as ice; over WATER_MAX, too hot for the yeast. */
+function finishWater(water: number, grams: number): WaterTemp {
   let ice: number | null = null;
   if (water < 2) {
-    // Replace part of the fridge-cold water with ice; melting soaks up the extra heat.
-    ice = (p.water * C_WATER * (FRIDGE_WATER - water)) / (C_WATER * FRIDGE_WATER + L_ICE);
-    ice = Math.min(p.water, Math.max(0, ice));
+    // Replace part of the fridge-cold water with ice; melting soaks up the extra heat. The same as the
+    // textbook ice share (T_tap − T_water) / (T_tap + 80).
+    ice = (grams * C_WATER * (FRIDGE_WATER - water)) / (C_WATER * FRIDGE_WATER + L_ICE);
+    ice = Math.min(grams, Math.max(0, ice));
   }
   return { water, ice, tooHot: water > WATER_MAX };
 }
+
+/**
+ * The bakers' friction factor for the DDT rule, °C: three times the mixer's real temperature rise, the
+ * way it's measured (FF = 3 × dough − room − flour − water). King Arthur's stand mixer, 22–24 °F, is
+ * 12–13 °C; Hamelman's spiral, 26 °F, 14 °C. Hamelman keeps the same factor in the × 4 rule.
+ */
+export const frictionFactor = (rise: number) => 3 * rise;
 
 /* ---------- biga water: Giorilli's rule ---------- */
 
@@ -268,6 +292,12 @@ export type Calc = {
   /** Water for mixing the biga itself (Giorilli); null for a poolish or a direct dough. */
   bigaWater: BigaWater | null;
   mixWater: WaterTemp | null;
+  /** The final mix's water by each rule, °C, whichever is chosen. null when there's no water to add. */
+  waterBy: Record<WaterRule, number> | null;
+  /** The DDT rule's multiplier: 3, or 4 with a preferment. */
+  ddtN: number;
+  /** The dough temperature the heat balance expects from the water `mixWater` asks for, °C. */
+  expectC: number | null;
   /**
    * The final mix's water in two parts: `first` brings the whole dough to FIRST_HYD%, then `rest` is
    * drizzled in. Whole grams that add up to the water shown. null when the dough isn't wetter than that.
@@ -367,7 +397,7 @@ export function calc(kind: Kind, s: Settings): Calc {
     fin: fF * finMix.of[i],
   }));
 
-  const mixWater = waterTemp({
+  const mixIn: Mix = {
     preFlour: bF,
     preWater: bW,
     preTemp: s.preT ?? temp,
@@ -376,7 +406,19 @@ export function calc(kind: Kind, s: Settings): Calc {
     water: Math.max(fW, 0),
     ddt: s.ddt,
     friction: s.friction,
-  });
+  };
+  const balance = waterTemp(mixIn);
+  // The other rules, for the same mix. DDT: n × DDT − room − flour − friction factor, n = 3, or 4 with a
+  // preferment, whose temperature counts too. Base: base − room − flour (the Neapolitan rule of 55).
+  const ddtN = direct ? 3 : 4;
+  const waterBy = balance
+    ? {
+        balance: balance.water,
+        ddt: ddtN * s.ddt - s.room - s.flourT - (direct ? 0 : mixIn.preTemp) - frictionFactor(s.friction),
+        base: s.waterBase - s.room - s.flourT,
+      }
+    : null;
+  const mixWater = balance && waterBy && s.waterRule !== 'balance' ? finishWater(waterBy[s.waterRule], mixIn.water) : balance;
 
   const warnings: string[] = [];
   if (!split) {
@@ -417,6 +459,9 @@ export function calc(kind: Kind, s: Settings): Calc {
     extras: s.extras.map((x) => ({ ...x, grams: (FL * x.pct) / 100 })),
     bigaWater: kind === 'biga' ? giorilli(s.room, s.flourT) : null,
     mixWater,
+    waterBy,
+    ddtN,
+    expectC: mixWater ? doughTempFrom(mixIn, mixWater.water) : null,
     holdBack: holdBack(FL, bW, fW, s.hyd),
     warnings,
   };

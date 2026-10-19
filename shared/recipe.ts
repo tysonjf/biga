@@ -12,6 +12,14 @@ export const KINDS: Kind[] = ['biga', 'poolish', 'direct', 'manual'];
 /** The kinds with a playground: the ones with a yeast chart to try out. */
 export const PLAY_KINDS: Kind[] = ['biga', 'poolish', 'direct'];
 
+/**
+ * How the final mix's water temperature is worked out: the heat balance (each ingredient by its weight
+ * and specific heat), the bakers' DDT × 3 rule (× 4 with a preferment), or a base number (the
+ * Neapolitan rule of 55).
+ */
+export type WaterRule = 'balance' | 'ddt' | 'base';
+export const WATER_RULES: WaterRule[] = ['balance', 'ddt', 'base'];
+
 /** A manual recipe's own ingredient: oil, sugar, malt, anything. */
 export type Extra = { name: string; pct: number };
 
@@ -47,6 +55,8 @@ export type Settings = {
   room: number; // room temperature where the dough is mixed and the balls proof, °C
   flourT: number; // flour temperature, °C
   friction: number; // temperature rise from mixing, °C
+  waterRule: WaterRule; // how the final mix's water temperature is worked out
+  waterBase: number; // the base number for the 'base' rule: water = base − room − flour
   /**
    * The preferment's temperature as it goes into the final mix, °C. null = its ferment temperature.
    * Set when it was held back in the fridge, or left out once it was ready.
@@ -91,6 +101,7 @@ export const FIELDS: Record<NumKey, Field> = {
   room: { label: 'Room', unit: '°C', step: 1, min: 5, max: 40, dec: 0 },
   flourT: { label: 'Flour', unit: '°C', step: 1, min: -5, max: 40, dec: 0 },
   friction: { label: 'Mixer heat', unit: '+°C', step: 1, min: 0, max: 20, dec: 0 },
+  waterBase: { label: 'Base number', unit: '', step: 1, min: 40, max: 80, dec: 0 },
   fridgeRest: { label: 'Room rest first', unit: 'min', step: 15, min: 0, max: 240, dec: 0 },
   fridgeH: { label: 'In the fridge', unit: 'h', step: 1, min: 1, max: 96, dec: 0 },
   fridgeT: { label: 'Fridge', unit: '°C', step: 1, min: 1, max: 12, dec: 0 },
@@ -122,6 +133,8 @@ const COMMON = {
   room: 21,
   flourT: 21,
   friction: 5,
+  waterRule: 'balance',
+  waterBase: 55,
   preT: null,
   fridge: false,
   fridgeRest: 60,
@@ -175,6 +188,7 @@ export function normalise(kind: Kind, raw: unknown): Settings {
   if (kind === 'poolish') out.bh = 100;
   else out.bh = clamp(out.bh, 40, 65);
   if (typeof src.preT === 'number' && Number.isFinite(src.preT)) out.preT = round(clamp(src.preT, PRE_T.min, PRE_T.max), PRE_T.dec);
+  if (WATER_RULES.includes(src.waterRule as WaterRule)) out.waterRule = src.waterRule as WaterRule;
   if (typeof src.fridge === 'boolean') out.fridge = src.fridge;
   if (typeof src.split === 'boolean') out.split = src.split;
   if (Array.isArray(src.extras))

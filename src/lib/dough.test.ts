@@ -493,6 +493,56 @@ describe('manual recipe', () => {
   });
 });
 
+describe('water temperature rules', () => {
+  it('uses the heat balance unless told otherwise', () => {
+    const c = calc('biga', biga());
+    expect(DEFAULTS.biga.waterRule).toBe('balance');
+    expect(c.mixWater!.water).toBe(c.waterBy!.balance);
+    expect(c.expectC).toBeCloseTo(DEFAULTS.biga.ddt, 9);
+  });
+
+  it('does the bakers’ DDT × 3 for a direct dough: the published worked example', () => {
+    // DDT 24, room 21, flour 20, a spiral at 26 °F ≈ 14.4 °C friction factor (4.8 °C of real rise)
+    const c = calc('direct', direct({ ddt: 24, room: 21, flourT: 20, friction: 4.8, waterRule: 'ddt' }));
+    expect(c.ddtN).toBe(3);
+    expect(c.waterBy!.ddt).toBeCloseTo(72 - 21 - 20 - 14.4, 9);
+    expect(c.mixWater!.water).toBeCloseTo(16.6, 9);
+  });
+
+  it('does DDT × 4 with a preferment, counting its temperature, with the same friction factor', () => {
+    const c = calc('biga', biga({ ddt: 24, room: 21, flourT: 20, friction: 4.8, temp: 18, waterRule: 'ddt' }));
+    expect(c.ddtN).toBe(4);
+    expect(c.waterBy!.ddt).toBeCloseTo(96 - 21 - 20 - 18 - 14.4, 9);
+    // A biga brought out of the fridge counts at its own temperature.
+    expect(calc('biga', biga({ preT: 4, waterRule: 'ddt' })).waterBy!.ddt).toBeCloseTo(calc('biga', biga({ waterRule: 'ddt' })).waterBy!.ddt + 14, 9);
+  });
+
+  it('does the rule of 55, and any other base', () => {
+    const c = calc('direct', direct({ room: 21, flourT: 20, waterRule: 'base' }));
+    expect(c.mixWater!.water).toBe(14);
+    expect(calc('direct', direct({ room: 21, flourT: 20, waterRule: 'base', waterBase: 60 })).mixWater!.water).toBe(19);
+  });
+
+  it('says what the heat balance expects from another rule’s water', () => {
+    const s = direct({ ddt: 24, room: 21, flourT: 20, friction: 8, waterRule: 'ddt' });
+    const c = calc('direct', s);
+    // A hot mixer: the × 3 rule cools the water 3 °C per degree of friction, the physics about 1.6.
+    expect(c.waterBy!.ddt).toBeLessThan(c.waterBy!.balance);
+    expect(c.expectC!).toBeLessThan(s.ddt);
+  });
+
+  it('turns a rule’s cold answer into ice, like the heat balance does', () => {
+    const c = calc('direct', direct({ room: 30, flourT: 30, waterRule: 'base' }));
+    expect(c.mixWater!.water).toBe(-5);
+    expect(c.mixWater!.ice).toBeGreaterThan(0);
+  });
+
+  it('stores the rule and the base in range', () => {
+    expect(normalise('biga', { waterRule: 'ddt', waterBase: 60 })).toMatchObject({ waterRule: 'ddt', waterBase: 60 });
+    expect(normalise('biga', { waterRule: 'magic', waterBase: 200 })).toMatchObject({ waterRule: 'balance', waterBase: 80 });
+  });
+});
+
 describe('timeline', () => {
   const start = new Date('2026-10-03T08:00:00');
 

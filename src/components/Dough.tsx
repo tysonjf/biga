@@ -2,7 +2,7 @@
 // own order; they read the lock from context, so a locked page shows values that can't be changed.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import { FIELDS, LIMITS, PRE_T, type Kind, type NumKey, type Settings } from '../../shared/recipe';
+import { FIELDS, LIMITS, PRE_T, type Kind, type NumKey, type Settings, type WaterRule } from '../../shared/recipe';
 import {
   afterReady,
   balance,
@@ -19,6 +19,7 @@ import {
   fmtDur,
   fmtWeekday,
   g0,
+  frictionFactor,
   FRIDGE,
   FRIDGE_MAX,
   g1,
@@ -336,6 +337,7 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
     <Fold title="Dough temperature" summary={waterSummary(c)} open={open} onToggle={setOpen} order={order}>
       {c.bigaWater ? <BigaWaterResult w={c.bigaWater} /> : null}
       <WaterResult c={c} s={s} />
+      <WaterRules d={d} />
       <div className="grid">
         <Field d={d} k="ddt" />
         <Field d={d} k="room" />
@@ -739,6 +741,74 @@ function BigaWaterResult({ w }: { w: BigaWater }) {
   );
 }
 
+const RULE_NAME: Record<WaterRule, (c: Calc, s: Settings) => string> = {
+  balance: () => 'Heat balance',
+  ddt: (c) => `DDT × ${c.ddtN}`,
+  base: (_, s) => `Rule of ${s.waterBase}`,
+};
+
+/**
+ * How the water temperature is worked out, and what each way gives for this mix. The heat balance is
+ * the physics; the other two are the rules of thumb bakers use, shown with their working.
+ */
+function WaterRules({ d }: { d: Dough }) {
+  const { s, set, c } = d;
+  const locked = useLocked();
+  if (!c.waterBy) return null;
+  const pre = noPreferment(d.kind) ? null : c.model.name.toLowerCase();
+  const ff = frictionFactor(s.friction);
+  const by = c.waterBy;
+  return (
+    <>
+      <div className="chips" role="group" aria-label="Water temperature method">
+        {(['balance', 'ddt', 'base'] as const).map((r) => (
+          <button
+            key={r}
+            type="button"
+            className="chip-btn"
+            aria-pressed={s.waterRule === r}
+            aria-disabled={locked || undefined}
+            data-locked={locked ? '' : undefined}
+            onClick={() => !locked && set('waterRule', r)}
+          >
+            {RULE_NAME[r](c, s)} <span>{Math.round(by[r])}°</span>
+          </button>
+        ))}
+      </div>
+      {s.waterRule === 'base' ? (
+        <div className="grid">
+          <Field d={d} k="waterBase" />
+        </div>
+      ) : null}
+      <p className="note">
+        {s.waterRule === 'balance' ? (
+          <>
+            <b>Heat balance:</b> the flour, the water{pre ? ` and the ${pre}` : ''} counted by weight and by how much heat each holds, plus{' '}
+            {s.friction} °C from the mixer. Water holds about two thirds of a dough’s heat, which is why it stays right with a cold {pre ?? 'flour'} or a
+            hot mixer where the rules of thumb drift.
+          </>
+        ) : s.waterRule === 'ddt' ? (
+          <>
+            <b>
+              {c.ddtN} × {s.ddt} − ({s.room} room + {s.flourT} flour{pre ? ` + ${num(c.preTemp, 1)} ${pre}` : ''} + {ff} friction) = {num(by.ddt, 1)} °C.
+            </b>{' '}
+            The bakers’ rule (King Arthur, Hamelman){pre ? `, × 4 with a ${pre}` : ''}. The friction factor is 3 × the mixer heat. It treats water as a
+            third of the dough’s heat, so it overcorrects for a hot mixer{pre ? ` or a cold ${pre}` : ''}.
+          </>
+        ) : (
+          <>
+            <b>
+              {s.waterBase} − ({s.room} room + {s.flourT} flour) = {num(by.base, 1)} °C.
+            </b>{' '}
+            The base-number rule, best known as the Neapolitan rule of 55: the mixer’s heat is built into the base, and there’s no target temperature.
+            Raise the base for a warmer dough or a gentler mixer; French bakers use 52 for intensive mixing up to 72 for slow.
+          </>
+        )}
+      </p>
+    </>
+  );
+}
+
 function WaterResult({ c, s }: { c: Calc; s: Settings }) {
   const w = c.mixWater;
   if (!w) return <p className="note">All the water is already in the {c.model.name.toLowerCase()}, so chill or warm the flour instead.</p>;
@@ -767,9 +837,14 @@ function WaterResult({ c, s }: { c: Calc; s: Settings }) {
               flour warm up first, or accept a cooler dough and a longer bulk.
             </>
           )
-        ) : (
+        ) : s.waterRule === 'balance' ? (
           <>
             {Math.round(water)} g at {Math.round(w.water)} °C lands the dough on {s.ddt} °C.
+          </>
+        ) : (
+          <>
+            {Math.round(water)} g at {Math.round(w.water)} °C, by the {s.waterRule === 'ddt' ? `DDT × ${c.ddtN} rule` : `rule of ${s.waterBase}`}.
+            {c.expectC !== null && Math.abs(c.expectC - s.ddt) >= 0.5 ? ` The heat balance expects about ${num(c.expectC, 1)} °C from it.` : ''}
           </>
         )}
         {c.holdBack ? (
