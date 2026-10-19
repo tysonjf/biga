@@ -24,7 +24,7 @@ export default defineConfig({
         scope: '/',
         name: 'Biga — preferment recipe book',
         short_name: 'Biga',
-        description: 'Plan biga and poolish pizza doughs to the hour, and keep your favourite pizza toppings.',
+        description: 'Plan biga, poolish and direct pizza doughs to the hour, and keep your favourite pizza toppings.',
         lang: 'en',
         display: 'standalone',
         orientation: 'portrait',
@@ -40,6 +40,7 @@ export default defineConfig({
         shortcuts: [
           { name: 'New biga', short_name: 'Biga', url: '/?new=biga', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
           { name: 'New poolish', short_name: 'Poolish', url: '/?new=poolish', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
+          { name: 'New direct dough', short_name: 'Direct', url: '/?new=direct', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
           { name: 'Toppings', short_name: 'Toppings', url: '/toppings', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
         ],
       },

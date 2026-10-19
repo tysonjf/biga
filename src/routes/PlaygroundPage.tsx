@@ -14,11 +14,11 @@ import { BackHome } from './RecipePage';
 
 const KIND_KEY = 'biga-play-kind';
 
-/** The preferment the playground was last on, remembered on this device. */
+/** The dough type the playground was last on, remembered on this device. */
 export function storedKind(): Kind {
   try {
     const v = localStorage.getItem(KIND_KEY);
-    return v === 'poolish' ? 'poolish' : 'biga';
+    return KINDS.includes(v as Kind) ? (v as Kind) : 'biga';
   } catch {
     return 'biga';
   }
@@ -107,7 +107,7 @@ function Playground({ kind, setKind, initial }: { kind: Kind; setKind: (k: Kind)
       large={
         <div className="title-block">
           <h1>Playground</h1>
-          <div className="segmented kind-switch" role="tablist" aria-label="Preferment">
+          <div className="segmented kind-switch" role="tablist" aria-label="Dough type">
             {KINDS.map((k) => (
               <button key={k} type="button" role="tab" aria-selected={kind === k} onClick={() => k !== kind && setKind(k)}>
                 {KIND_NAME[k]}

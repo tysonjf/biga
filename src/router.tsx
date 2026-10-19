@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Link, Navigate, Outlet, useRouterState } from '@tanstack/react-router';
+import { KINDS, type Kind } from '../shared/recipe';
 import { useSession } from './lib/auth';
 import { useOnline, usePwaState, applyUpdate, dismissUpdate } from './lib/pwa';
 import { useToast, dismiss } from './lib/toast';
@@ -124,8 +125,7 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: HomePage,
-  validateSearch: (s: Record<string, unknown>): { new?: 'biga' | 'poolish' } =>
-    s.new === 'biga' || s.new === 'poolish' ? { new: s.new } : {},
+  validateSearch: (s: Record<string, unknown>): { new?: Kind } => (KINDS.includes(s.new as Kind) ? { new: s.new as Kind } : {}),
 });
 
 const recipeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/r/$id', component: RecipePage });

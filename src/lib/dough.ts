@@ -4,6 +4,7 @@ import type { Kind, Settings } from '../../shared/recipe';
 
 export type Model = {
   kind: Kind;
+  /** What ferments on the chart: the preferment, or for a direct dough the whole dough. */
   name: string;
   temps: number[];
   hours: number[];
@@ -44,10 +45,33 @@ export const MODELS: Record<Kind, Model> = {
       'Ready when it has risen 2–3×, is covered in bubbles and has domed with the centre just starting to dip, leaving tide marks on the container. Fully collapsed, soupy or smelling of acetone means it went too far.',
     note: 'About 0.075% IDY at 21 °C for 14 hours, the classic overnight poolish (Hamelman uses 0.07%, Forkish 0.08%), doubling in activity every 8 °C and scaling down for longer ferments. Wet preferments ferment faster, so that’s roughly a quarter of a biga’s dose. Published schedules disagree by about ±50%, so trust the bubbles over the clock.',
   },
+  direct: {
+    kind: 'direct',
+    name: 'Dough',
+    temps: range(14, 28),
+    hours: [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 24],
+    // Fitted to Craig's yeast chart (pizzamaking.com) and Neapolitan doughs: the EU's Neapolitan rules,
+    // Salvo, Shipton Mill, Fuego. They agree within about ±30%. Temperature matters more than for the
+    // preferments: activity doubles about every 4.5 °C here.
+    idy: model(0.05, 21, 12, 4.5, 1.1),
+    ready:
+      'Ready to ball when it has about doubled, feels airy and slightly domed, and shows bubbles on the sides and bottom of the container.',
+    note: 'About 0.05% IDY at 21 °C for a 12-hour bulk, fitted to Craig’s yeast chart from pizzamaking.com and to Neapolitan doughs (the EU’s Neapolitan rules among them), with activity doubling about every 4.5 °C. It assumes a 2-hour ball proof; a longer one counts as more time, so it takes less yeast. That’s for a dough that about doubles: home recipes such as Forkish’s or King Arthur’s use 1.5–3× more for a bigger rise. Short bulks of 2–3 hours may need a little less than the chart says.',
+  },
 };
 
 export const nearest = (list: number[], v: number) =>
   list.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+
+/**
+ * A direct dough's chart assumes a 2-hour ball proof at room temperature. Longer is more time
+ * fermenting, so it counts as extra bulk hours and the dough gets less yeast. Hours in the fridge
+ * barely count.
+ */
+export function directExtraHours(s: Settings): number {
+  const room = s.fridge ? s.fridgeRest + s.temper : s.proof;
+  return Math.max(0, room - 120) / 60;
+}
 
 /* ---------- final dough proofing ---------- */
 
@@ -75,6 +99,12 @@ export const MIXERS = [
   { id: 'spiral', label: 'Spiral mixer', rise: 6 },
 ] as const;
 export const WATER_MAX = 38;
+
+/* ---------- holding back water ---------- */
+
+// A wet dough mixes strong faster at a lower hydration: bring it together at 60%, counting the
+// preferment's water, then drizzle in the rest as it mixes (bassinage).
+export const FIRST_HYD = 60;
 
 export type WaterTemp = {
   /** Water temperature that lands the dough on the target, °C. */
@@ -161,9 +191,14 @@ export type Calc = {
   /** Flours are set separately for the preferment and the final dough. */
   split: boolean;
   flours: FlourLine[];
-  /** Water for mixing the biga itself (Giorilli); null for a poolish. */
+  /** Water for mixing the biga itself (Giorilli); null for a poolish or a direct dough. */
   bigaWater: BigaWater | null;
   mixWater: WaterTemp | null;
+  /**
+   * The final mix's water in two parts: `first` brings the whole dough to FIRST_HYD%, then `rest` is
+   * drizzled in. Whole grams that add up to the water shown. null when the dough isn't wetter than that.
+   */
+  holdBack: { first: number; rest: number } | null;
   warnings: string[];
 };
 
@@ -221,11 +256,14 @@ export function calc(kind: Kind, s: Settings): Calc {
   const salt = s.salt / 100;
   const oil = s.oil / 100;
   const sugar = s.sugar / 100;
-  const bp = Math.min(Math.max(s.bp, 0), 100) / 100;
+  // A direct dough has no preferment: the chart's yeast goes into the one mix, for all the flour.
+  const direct = kind === 'direct';
+  const chartIdy = (m.idy(temp, hours + (direct ? directExtraHours(s) : 0)) * (1 + s.boost / 100)) / 100;
+  const bp = direct ? 0 : Math.min(Math.max(s.bp, 0), 100) / 100;
   const bh = (kind === 'poolish' ? 100 : s.bh) / 100;
-  const finalIdy = s.fy * roomFactor(s.room);
+  const finalIdy = direct ? chartIdy * 100 : s.fy * roomFactor(s.room);
   const fy = finalIdy / 100;
-  const preIdy = (m.idy(temp, hours) * (1 + s.boost / 100)) / 100;
+  const preIdy = chartIdy;
 
   const dough = s.balls * s.bw * (1 + s.waste / 100);
   const FL = dough / (1 + hyd + salt + oil + sugar + fy + preIdy * bp);
@@ -239,7 +277,7 @@ export function calc(kind: Kind, s: Settings): Calc {
   const fSu = FL * sugar;
   const fY = FL * fy;
 
-  const split = s.split && s.flours.length > 1;
+  const split = !direct && s.split && s.flours.length > 1;
   const preMix = mix(s.flours.map((f) => f.pct));
   const finMix = split ? mix(s.flours.map((f) => f.fin)) : preMix;
   const flours = s.flours.map((f, i) => ({
@@ -274,7 +312,7 @@ export function calc(kind: Kind, s: Settings): Calc {
     );
   else if (fW < FL * 0.05)
     warnings.push(`Only ${Math.round(fW)} g of water is left for the final mix, so it may be hard to bring together. Lower the ${m.name.toLowerCase()} share.`);
-  if (bY < 0.3 || (fY > 0 && fY < 0.3))
+  if ((!direct && bY < 0.3) || (fY > 0 && fY < 0.3))
     warnings.push(
       'Some yeast amounts are under 0.3 g. Weigh them on a 0.01 g scale, or dissolve 1 g of yeast in 100 g of the recipe’s water and weigh the solution (10 g holds 0.1 g of yeast).',
     );
@@ -295,8 +333,16 @@ export function calc(kind: Kind, s: Settings): Calc {
     flours,
     bigaWater: kind === 'biga' ? giorilli(s.room, s.flourT) : null,
     mixWater,
+    holdBack: holdBack(FL, bW, fW, s.hyd),
     warnings,
   };
+}
+
+function holdBack(flour: number, preWater: number, water: number, hyd: number) {
+  const first = Math.round((flour * FIRST_HYD) / 100 - preWater);
+  const all = Math.round(water);
+  if (hyd <= FIRST_HYD || first <= 0 || first >= all) return null;
+  return { first, rest: all - first };
 }
 
 export type DoughVar = { name: string; value: number; unit: string };
@@ -310,7 +356,7 @@ export function doughVars(kind: Kind, s: Settings, c: Calc): DoughVar[] {
   return [
     g('flour', c.flour),
     g('water', c.water),
-    g(kind, c.pre.total),
+    ...(kind === 'direct' ? [] : [g(kind, c.pre.total)]),
     g('salt', c.final.salt),
     g('oil', c.final.oil),
     g('sugar', c.final.sugar),
@@ -342,10 +388,13 @@ export function fmtDur(min: number): string {
   return (h ? `${h} h` : '') + (h && r ? ' ' : '') + (r ? `${r} min` : '') || '0 min';
 }
 
-/** Minutes from "preferment ready" until the balls are ready to bake. */
-export function afterReady(s: Settings): number {
+/**
+ * Minutes from the end of the chart's ferment until the balls are ready to bake: for a preferment,
+ * the final mix, bulk and balls; for a direct dough, whose chart is its bulk, just the balls.
+ */
+export function afterReady(kind: Kind, s: Settings): number {
   const balls = s.fridge ? s.fridgeRest + s.fridgeH * 60 + s.temper : s.proof;
-  return s.mix + s.bulk + balls;
+  return kind === 'direct' ? balls : s.mix + s.bulk + balls;
 }
 
 export function timeline(kind: Kind, s: Settings, start: Date): Timeline {
@@ -353,21 +402,24 @@ export function timeline(kind: Kind, s: Settings, start: Date): Timeline {
   const H = nearest(m.hours, s.hours);
   const b = (Math.max(0, s.buf) / 100) * H * 60;
   const ready = addMin(start, H * 60);
-  const mixed = addMin(ready, s.mix);
-  const balled = addMin(mixed, s.bulk);
-  const after = afterReady(s);
+  const after = afterReady(kind, s);
   const bake = addMin(ready, after);
   const name = m.name.toLowerCase();
-  const steps: Step[] = [
-    { key: 'start', at: start, title: `Mix the ${name}`, sub: `${H} h at ${nearest(m.temps, s.temp)} °C` },
-    {
-      key: 'ready',
-      at: ready,
-      title: `${m.name} ready, start the final mix`,
-      sub: `Mix to ${s.ddt} °C` + (b ? ` · usable from ${fmtClock(addMin(ready, -b))} to ${fmtClock(addMin(ready, b))}` : ''),
-    },
-    { key: 'ball', at: balled, title: 'Divide and ball', sub: `${fmtDur(s.mix)} mix + ${fmtDur(s.bulk)} bulk` },
-  ];
+  const T = nearest(m.temps, s.temp);
+  const usable = b ? `usable from ${fmtClock(addMin(ready, -b))} to ${fmtClock(addMin(ready, b))}` : '';
+  // A direct dough's chart is its bulk: it's balled when the chart's hours are up.
+  const steps: Step[] =
+    kind === 'direct'
+      ? [
+          { key: 'start', at: start, title: 'Mix the dough', sub: `Mix to ${s.ddt} °C, then ${H} h bulk at ${T} °C` },
+          { key: 'ball', at: ready, title: 'Divide and ball', sub: usable ? `Bulk done · ${usable}` : `After ${H} h bulk` },
+        ]
+      : [
+          { key: 'start', at: start, title: `Mix the ${name}`, sub: `${H} h at ${T} °C` },
+          { key: 'ready', at: ready, title: `${m.name} ready, start the final mix`, sub: `Mix to ${s.ddt} °C` + (usable ? ` · ${usable}` : '') },
+          { key: 'ball', at: addMin(ready, s.mix + s.bulk), title: 'Divide and ball', sub: `${fmtDur(s.mix)} mix + ${fmtDur(s.bulk)} bulk` },
+        ];
+  const balled = steps.find((st) => st.key === 'ball')!.at;
   if (s.fridge) {
     const cold = addMin(balled, s.fridgeRest);
     const out = addMin(cold, s.fridgeH * 60);
@@ -526,7 +578,7 @@ export function bakeStatus(kind: Kind, tl: Timeline, now: Date): BakeStatus {
   }
   const fridge = steps.some((s) => s.key === 'fridge');
   const titles: Record<string, string> = {
-    start: `${MODELS[kind].name} fermenting`,
+    start: kind === 'direct' ? 'Bulk fermenting' : `${MODELS[kind].name} fermenting`,
     ready: 'Final mix and bulk',
     ball: fridge ? 'Balls resting' : 'Balls proofing',
     fridge: 'Balls in the fridge',

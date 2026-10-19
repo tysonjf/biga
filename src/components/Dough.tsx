@@ -10,7 +10,9 @@ import {
   calc,
   clockChange,
   describeClockChange,
+  directExtraHours,
   doughVars,
+  FIRST_HYD,
   fmtClock,
   fmtDay,
   fmtDur,
@@ -90,9 +92,14 @@ function Field({ d, k, ...extra }: { d: Dough; k: NumKey } & Partial<StepperProp
 
 /** `planner`: show the start row (recipes and the playground; a bake has its own start time). */
 export function YeastCard({ d, order, planner }: { d: Dough; order?: number; planner?: boolean }) {
-  const { s, set, setS, c, tl, start, live } = d;
+  const { kind, s, set, setS, c, tl, start, live } = d;
   const m = c.model;
+  // A direct dough's chart is its bulk ferment: when it's up, you ball the dough.
+  const direct = kind === 'direct';
   const [reveal, setReveal] = useState(0);
+  // A long ball proof counts toward a direct dough's ferment: the chart shows the yeast it gets.
+  const extra = direct ? directExtraHours(s) : 0;
+  const chart = useMemo(() => (extra ? { ...m, idy: (t: number, h: number) => m.idy(t, h + extra) } : m), [m, extra]);
   const onPick = useCallback((t: number, h: number) => setS((p) => ({ ...p, temp: t, hours: h })), [setS]);
   const grid = (list: number[]) => ({
     min: list[0],
@@ -112,7 +119,13 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
           <span className="hint">Tap a cell to pick temperature × time.</span>
         </div>
         {planner ? <StartRow d={d} /> : null}
-        <Heatmap model={m} temp={c.temp} hours={c.hours} onPick={onPick} start={start} live={live} after={afterReady(s)} reveal={reveal} />
+        <Heatmap model={chart} temp={c.temp} hours={c.hours} onPick={onPick} start={start} live={live} after={afterReady(kind, s)} reveal={reveal} />
+        {extra ? (
+          <p className="note">
+            The yeast allows for the {fmtDur(s.fridge ? s.fridgeRest + s.temper : s.proof)} the balls spend at room temperature, {fmtDur(extra * 60)} more
+            than the chart’s usual 2 hours.
+          </p>
+        ) : null}
         <div className="grid">
           <Stepper
             big
@@ -141,15 +154,15 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
         </div>
         <div className="stats">
           <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
-          <Stat k={`${m.name} yeast`} v={g1(c.pre.yeast)} />
+          <Stat k={`${m.name} yeast`} v={g1(direct ? c.final.yeast : c.pre.yeast)} />
           {live || !tl ? (
             <>
-              <Stat k={`${m.name} ready after`} v={fmtDur(c.hours * 60)} />
-              <Stat k="Bake after" v={fmtDur(c.hours * 60 + afterReady(s))} accent />
+              <Stat k={direct ? 'Ball after' : `${m.name} ready after`} v={fmtDur(c.hours * 60)} />
+              <Stat k="Bake after" v={fmtDur(c.hours * 60 + afterReady(kind, s))} accent />
             </>
           ) : (
             <>
-              <Stat k={`Ready · ${fmtWeekday(tl.ready)}`} v={fmtClock(tl.ready)} />
+              <Stat k={`${direct ? 'Ball' : 'Ready'} · ${fmtWeekday(tl.ready)}`} v={fmtClock(tl.ready)} />
               <Stat k={`Bake · ${fmtWeekday(tl.bake)}`} v={fmtClock(tl.bake)} accent />
             </>
           )}
@@ -208,7 +221,7 @@ function StartRow({ d }: { d: Dough }) {
       </div>
       {tl ? (
         <p className="start-plan-out">
-          {c.model.name} ready <b>{fmtDay(tl.ready)}</b> · bake <b>{fmtDay(tl.bake)}</b>
+          {d.kind === 'direct' ? 'Ball' : `${c.model.name} ready`} <b>{fmtDay(tl.ready)}</b> · bake <b>{fmtDay(tl.bake)}</b>
         </p>
       ) : null}
     </div>
@@ -227,9 +240,18 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
           <Field key={k} d={d} k={k} />
         ))}
       </div>
-      <div className="sub-h">{c.model.name}</div>
-      <div className="grid">
-        <Field d={d} k="bp" />
+      {kind === 'direct' ? (
+        <>
+          <div className="sub-h">Yeast</div>
+          <div className="grid">
+            <Field d={d} k="boost" />
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="sub-h">{c.model.name}</div>
+          <div className="grid">
+            <Field d={d} k="bp" />
         {kind === 'biga' ? (
           <Field d={d} k="bh" min={40} max={65} />
         ) : (
@@ -241,9 +263,11 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
             <div className="fixed-val">100</div>
           </div>
         )}
-        <Field d={d} k="boost" />
-        <Field d={d} k="fy" />
-      </div>
+            <Field d={d} k="boost" />
+            <Field d={d} k="fy" />
+          </div>
+        </>
+      )}
       <Flours d={d} />
     </section>
   );
@@ -311,7 +335,8 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
         </b>{' '}
         room. Hitting the dough temperature matters most.
       </p>
-      {s.room > ROOM_MAX ? (
+      {/* A direct dough's yeast comes from the chart, so a hot room doesn't cut it. */}
+      {s.room > ROOM_MAX && d.kind !== 'direct' ? (
         <p className="tip">
           <Icon name="thermo" size={18} />
           <span>
@@ -325,7 +350,7 @@ export function TempFold({ d, order }: { d: Dough; order?: number }) {
           <span>Below {ROOM_MIN} °C the balls will be slow. Find a warmer spot or give them longer than 2 hours.</span>
         </p>
       ) : null}
-      <PreTemp d={d} />
+      {d.kind === 'direct' ? null : <PreTemp d={d} />}
     </Fold>
   );
 }
@@ -384,8 +409,13 @@ export function TimingFields({ d }: { d: Dough }) {
     <>
       <div className="grid">
         <Field d={d} k="buf" />
-        <Field d={d} k="mix" />
-        <Field d={d} k="bulk" />
+        {/* A direct dough's bulk is the yeast chart's hours, and starts as it's mixed. */}
+        {kind === 'direct' ? null : (
+          <>
+            <Field d={d} k="mix" />
+            <Field d={d} k="bulk" />
+          </>
+        )}
         <Field d={d} k={s.fridge ? 'fridgeRest' : 'proof'} />
       </div>
       <Switch checked={s.fridge} onChange={(v) => set('fridge', v)} label="Bake later" sub="Rest the balls about an hour, then hold them in the fridge." />
@@ -421,9 +451,9 @@ export function TimingFold({
   order?: number;
   children?: ReactNode;
 }) {
-  const { s, c, tl } = d;
+  const { kind, s, c, tl } = d;
   return (
-    <Fold id="timing" title="Timing" summary={`Bake after ${fmtDur(c.hours * 60 + afterReady(s))}`} open={open} onToggle={onToggle} order={order}>
+    <Fold id="timing" title="Timing" summary={`Bake after ${fmtDur(c.hours * 60 + afterReady(kind, s))}`} open={open} onToggle={onToggle} order={order}>
       <TimingFields d={d} />
       {tl ? (
         <>
@@ -492,7 +522,7 @@ export function HowCard({ c, order }: { c: Calc; order?: number }) {
       </p>
       <p className="note">
         The yeast chart is an estimate, not a published table: {m.note} Tune it to your flour and yeast with the yeast boost: about +20% if the{' '}
-        {m.name.toLowerCase()} is under-risen at mix time, −20% if it smells sharp. Hydration counts water only; oil, sugar and salt are extra.
+        {m.name.toLowerCase()} is under-risen {m.kind === 'direct' ? 'when you ball it' : 'at mix time'}, −20% if it smells sharp. Hydration counts water only; oil, sugar and salt are extra.
       </p>
     </section>
   );
@@ -535,7 +565,51 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
     });
   const w = c.mixWater;
   const waterSub = w ? (w.ice ? `${Math.round(w.ice)} g of it as ice` : `at ${Math.round(w.water)} °C`) : undefined;
+  // Wet doughs: mix to 60% first, then drizzle in the rest.
+  const hb = c.holdBack;
+  const waterLine = [waterSub, hb ? `${hb.first} g first, to ${FIRST_HYD}%, then drizzle in ${hb.rest} g` : ''].filter(Boolean).join(' · ') || undefined;
+  const waterTag = [waterSub, hb ? `${hb.first} g + ${hb.rest} g` : ''].filter(Boolean).join(' · ') || undefined;
   const preWaterAt = c.bigaWater ? bigaWaterShort(c.bigaWater) : undefined;
+  const direct = kind === 'direct';
+  const dough: Stage = {
+    key: 'fin',
+    title: direct ? 'Dough' : 'Final dough',
+    when: tl ? `Mix ${fmtDay(direct ? tl.steps[0].at : tl.ready)}` : undefined,
+    items: [
+      ...(direct
+        ? []
+        : [
+            {
+              n: m.name,
+              sub: (kind === 'biga' ? 'all of it, torn into pieces' : 'all of it') + (s.preT === null ? '' : ` · at ${c.preTemp} °C`),
+              tag: 'all of it',
+              g: g0(c.pre.total),
+            },
+          ]),
+      ...(c.final.flour > 0.5 ? flourItems('fin') : []),
+      { n: 'Water', sub: waterLine, tag: waterTag, g: g0(Math.max(c.final.water, 0)) },
+      ...(c.final.oil > 0 ? [{ n: 'Olive oil', sub: `${num(s.oil, 1)}% of flour`, g: g0(c.final.oil) }] : []),
+      ...(c.final.sugar > 0 ? [{ n: 'Sugar', sub: `${num(s.sugar, 1)}% of flour`, g: c.final.sugar < 10 ? g1(c.final.sugar) : g0(c.final.sugar) }] : []),
+      { n: 'Salt', sub: `${num(s.salt, 1)}% of flour`, g: g0(c.final.salt) },
+      ...(c.final.yeast > 0
+        ? [
+            {
+              n: 'Instant dry yeast',
+              short: 'Yeast',
+              tag: 'IDY',
+              sub: direct
+                ? `${idyPct(c.preIdy)} · ${c.hours} h bulk at ${c.temp} °C`
+                : c.finalIdy < s.fy
+                  ? `${num(c.finalIdy, 3)}% · cut for a ${s.room} °C room`
+                  : `${num(s.fy, 2)}% of flour`,
+              g: g1(c.final.yeast),
+            },
+          ]
+        : []),
+      { n: 'Total dough', sub: `${s.balls} × ${s.bw} g + ${num(s.waste, 1)}% waste`, g: g0(c.dough), sum: true },
+    ],
+  };
+  if (direct) return [dough];
   return [
     {
       key: 'pre',
@@ -553,36 +627,7 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
         { n: `Total ${pre}`, g: g0(c.pre.total), sum: true },
       ],
     },
-    {
-      key: 'fin',
-      title: 'Final dough',
-      when: tl ? `Mix ${fmtDay(tl.ready)}` : undefined,
-      items: [
-        {
-          n: m.name,
-          sub: (kind === 'biga' ? 'all of it, torn into pieces' : 'all of it') + (s.preT === null ? '' : ` · at ${c.preTemp} °C`),
-          tag: 'all of it',
-          g: g0(c.pre.total),
-        },
-        ...(c.final.flour > 0.5 ? flourItems('fin') : []),
-        { n: 'Water', sub: waterSub, tag: waterSub, g: g0(Math.max(c.final.water, 0)) },
-        ...(c.final.oil > 0 ? [{ n: 'Olive oil', sub: `${num(s.oil, 1)}% of flour`, g: g0(c.final.oil) }] : []),
-        ...(c.final.sugar > 0 ? [{ n: 'Sugar', sub: `${num(s.sugar, 1)}% of flour`, g: c.final.sugar < 10 ? g1(c.final.sugar) : g0(c.final.sugar) }] : []),
-        { n: 'Salt', sub: `${num(s.salt, 1)}% of flour`, g: g0(c.final.salt) },
-        ...(c.final.yeast > 0
-          ? [
-              {
-                n: 'Instant dry yeast',
-                short: 'Yeast',
-                tag: 'IDY',
-                sub: c.finalIdy < s.fy ? `${num(c.finalIdy, 3)}% · cut for a ${s.room} °C room` : `${num(s.fy, 2)}% of flour`,
-                g: g1(c.final.yeast),
-              },
-            ]
-          : []),
-        { n: 'Total dough', sub: `${s.balls} × ${s.bw} g + ${num(s.waste, 1)}% waste`, g: g0(c.dough), sum: true },
-      ],
-    },
+    dough,
   ];
 }
 
@@ -654,7 +699,7 @@ function WaterResult({ c, s }: { c: Calc; s: Settings }) {
   return (
     <div className={'water' + (w.ice ? ' cold' : w.tooHot ? ' hot' : '')}>
       <div className="water-main">
-        <span className="k">Final dough water</span>
+        <span className="k">{c.model.kind === 'direct' ? 'Dough water' : 'Final dough water'}</span>
         <span className="v">{w.ice ? `${Math.round(w.ice)} g ice` : `${Math.round(w.water)} °C`}</span>
       </div>
       <p>
@@ -664,15 +709,28 @@ function WaterResult({ c, s }: { c: Calc; s: Settings }) {
             or chill the flour, to land on {s.ddt} °C.
           </>
         ) : w.tooHot ? (
-          <>
-            Keep the water under {WATER_MAX} °C: it hits the {c.model.name.toLowerCase()}'s live yeast directly. Let the {c.model.name.toLowerCase()} or
-            flour warm up first, or accept a cooler dough and a longer bulk.
-          </>
+          c.model.kind === 'direct' ? (
+            <>
+              Keep the water under {WATER_MAX} °C: it goes straight onto the yeast. Let the flour warm up first, or accept a cooler dough and a longer
+              bulk.
+            </>
+          ) : (
+            <>
+              Keep the water under {WATER_MAX} °C: it hits the {c.model.name.toLowerCase()}'s live yeast directly. Let the {c.model.name.toLowerCase()} or
+              flour warm up first, or accept a cooler dough and a longer bulk.
+            </>
+          )
         ) : (
           <>
             {Math.round(water)} g at {Math.round(w.water)} °C lands the dough on {s.ddt} °C.
           </>
         )}
+        {c.holdBack ? (
+          <>
+            {' '}
+            Mix with <b>{c.holdBack.first} g</b> first, to {FIRST_HYD}% hydration, then drizzle in the last <b>{c.holdBack.rest} g</b> as it mixes.
+          </>
+        ) : null}
       </p>
     </div>
   );
@@ -765,7 +823,7 @@ function Flours({ d }: { d: Dough }) {
         <p className="note">Shares always add up to 100%. When you change one, the biggest of the other flours makes up the difference.</p>
       ) : null}
       {overall ? <p className="note">Overall: {s.flours.map((f, i) => `${f.name || 'Flour'} ${num(overall[i], 1)}%`).join(' · ')}</p> : null}
-      {s.flours.length > 1 ? (
+      {s.flours.length > 1 && kind !== 'direct' ? (
         <Switch
           checked={split}
           onChange={toggleSplit}

@@ -94,4 +94,12 @@ ${BALLS}`,
 3. Add the salt and mix until the dough is smooth and strong. Check its temperature.
 
 ${BALLS}`,
+  direct: `## Dough
+1. Dissolve the yeast in most of the water.
+2. Add the flour and mix until it comes together.
+3. Add the salt, then the rest of the water a little at a time.
+4. Mix until the dough is smooth and strong. Check its temperature.
+5. Cover and leave it to ferment in bulk.
+
+${BALLS}`,
 };
