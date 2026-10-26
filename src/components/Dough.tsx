@@ -2,7 +2,7 @@
 // own order; they read the lock from context, so a locked page shows values that can't be changed.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import { FIELDS, LIMITS, PRE_T, type Kind, type NumKey, type Settings, type WaterRule } from '../../shared/recipe';
+import { FIELDS, LIMITS, PRE_T, type DoughKind, type NumKey, type Settings, type WaterRule } from '../../shared/recipe';
 import {
   afterReady,
   balance,
@@ -56,7 +56,7 @@ export type SetS = Dispatch<SetStateAction<Settings>>;
  * Everything the cards need, worked out once per change. `start` is when the preferment is mixed;
  * `live` means it's just "now" (a recipe or the playground), so the ingredients don't show mix times.
  */
-export function useDough(kind: Kind, s: Settings, setS: SetS, start: Date | null, live = false) {
+export function useDough(kind: DoughKind, s: Settings, setS: SetS, start: Date | null, live = false) {
   const c = useMemo(() => calc(kind, s), [kind, s]);
   const tl = useMemo(() => (start ? timeline(kind, s, start) : null), [kind, s, start]);
   const set = useCallback(<K extends keyof Settings>(k: K, v: Settings[K]) => setS((p) => ({ ...p, [k]: v })), [setS]);
@@ -72,7 +72,7 @@ export type Dough = ReturnType<typeof useDough>;
  * Where a recipe's (or the playground's) schedule starts: the planned mix time while that schedule is
  * still going, otherwise now, kept up to date.
  */
-export function usePlanStart(kind: Kind, s: Settings) {
+export function usePlanStart(kind: DoughKind, s: Settings) {
   const now = useNow();
   return useMemo(() => planStart(kind, s, now), [kind, s, now]);
 }
@@ -600,7 +600,7 @@ export function waterNote(c: Calc, short = false): string | undefined {
 }
 
 /** The ingredient lists, shared by the Recipe card and the full-screen view. Mix times only for a bake. */
-function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] {
+function stages(kind: DoughKind, s: Settings, c: Calc, tl: Timeline | null): Stage[] {
   const m = c.model;
   const pre = m.name.toLowerCase();
   const flourItems = (stage: 'pre' | 'fin') =>
@@ -638,12 +638,10 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
       ...(c.final.yeast > 0
         ? [
             {
-              n: kind === 'manual' ? 'Yeast' : 'Instant dry yeast',
+              n: 'Instant dry yeast',
               short: 'Yeast',
-              tag: kind === 'manual' ? undefined : 'IDY',
-              sub: kind === 'manual'
-                ? `${idyPct(c.preIdy)} of flour`
-                : direct
+              tag: 'IDY',
+              sub: direct
                 ? `${idyPct(c.preIdy)} · ${c.hours} h bulk at ${c.temp} °C`
                 : c.finalIdy < s.fy
                   ? `${num(c.finalIdy, 3)}% · cut for a ${s.room} °C room`
@@ -652,9 +650,6 @@ function stages(kind: Kind, s: Settings, c: Calc, tl: Timeline | null): Stage[] 
             },
           ]
         : []),
-      ...c.extras
-        .filter((x) => x.grams > 0)
-        .map((x) => ({ n: x.name || 'Ingredient', sub: `${num(x.pct, 3)}% of flour`, g: x.grams < 10 ? g1(x.grams) : g0(x.grams) })),
       { n: 'Total dough', sub: `${s.balls} × ${s.bw} g + ${num(s.waste, 1)}% waste`, g: g0(c.dough), sum: true },
     ],
   };

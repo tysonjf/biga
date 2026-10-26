@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { KIND_NAME, KINDS, type Kind, type Recipe } from '../../shared/recipe';
+import { CATEGORIES, CATEGORY_BLURB, CATEGORY_NAME, type Category } from '../../shared/formula';
+import { DOUGH_KINDS, KIND_NAME, KINDS, type DoughKind, type Kind, type Recipe, type Settings } from '../../shared/recipe';
 import { useCreateRecipe } from '../lib/actions';
 import { BAKE_GRACE_MIN, MODELS, nearest, parseStart, timeline } from '../lib/dough';
+import { calcFormula, formulaSummary } from '../lib/formula';
 import { useBakes, usePlayground, useRecipes } from '../lib/query';
 import { useNow } from '../lib/useNow';
 import { BakeRow } from '../components/BakeRow';
@@ -23,18 +25,23 @@ function ago(ts: number) {
   return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-const KIND_BLURB: Record<Kind, string> = {
+const KIND_BLURB: Record<DoughKind, string> = {
   biga: 'Stiff, 45% hydration. Deep, nutty flavour and strong structure.',
   poolish: 'Batter-like, 100% hydration. Extensible dough, open and airy crumb.',
   direct: 'No preferment: everything mixed at once, a bulk ferment, then balls. Simple, same-day or overnight.',
-  manual: 'Your own ratios: flours, water, salt, yeast and anything else as a % of the flour. No chart, just the numbers.',
 };
 
-function summary(kind: Kind, s: Recipe['settings']) {
-  if (kind === 'manual') return `${s.balls} × ${s.bw} g · ${+s.hyd.toFixed(1)}% · ${+s.salt.toFixed(2)}% salt`;
+function doughLine(kind: DoughKind, s: Settings) {
   const m = MODELS[kind];
   return `${s.balls} × ${s.bw} g · ${+s.hyd.toFixed(1)}% · ${nearest(m.hours, s.hours)} h @ ${nearest(m.temps, s.temp)}°`;
 }
+
+function summary(r: Recipe) {
+  return r.kind === 'manual' ? formulaSummary(r.settings, calcFormula(r.settings)) : doughLine(r.kind, r.settings);
+}
+
+/** The chip on a recipe: its dough kind, or a general recipe's category. */
+export const recipeLabel = (r: Recipe) => (r.kind === 'manual' ? CATEGORY_NAME[r.settings.category] : KIND_NAME[r.kind]);
 
 export function HomePage() {
   const { data, isPending, isError, refetch } = useRecipes();
@@ -101,7 +108,7 @@ export function HomePage() {
         </span>
         <span className="play-text">
           <b>Playground</b>
-          <small>{playSettings ? `${KIND_NAME[playKind]} · ${summary(playKind, playSettings)}` : 'Try out numbers freely. It saves as you go.'}</small>
+          <small>{playSettings ? `${KIND_NAME[playKind]} · ${doughLine(playKind, playSettings)}` : 'Try out numbers freely. It saves as you go.'}</small>
         </span>
         <Icon name="chevron" size={18} className="row-chev" />
       </Link>
@@ -123,7 +130,7 @@ export function HomePage() {
         <div className="segmented" role="tablist" aria-label="Filter recipes">
           {(['all', ...KINDS] as const).map((k) => (
             <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}>
-              {k === 'all' ? 'All' : KIND_NAME[k]}
+              {k === 'all' ? 'All' : k === 'manual' ? 'Recipes' : KIND_NAME[k]}
             </button>
           ))}
         </div>
@@ -151,10 +158,10 @@ export function HomePage() {
               <Link to="/r/$id" params={{ id: r.id }} className="row" viewTransition={{ types: ['push'] }}>
                 <span className="row-main">
                   <span className="row-title">{r.name || 'Untitled'}</span>
-                  <span className="row-sub">{summary(r.kind, r.settings)}</span>
+                  <span className="row-sub">{summary(r)}</span>
                 </span>
                 <span className="row-meta">
-                  <span className={`chip ${r.kind}`}>{KIND_NAME[r.kind]}</span>
+                  <span className={`chip ${r.kind}`}>{recipeLabel(r)}</span>
                   <span className="row-time">{ago(r.updatedAt)}</span>
                 </span>
                 <Icon name="chevron" size={18} className="row-chev" />
@@ -166,7 +173,7 @@ export function HomePage() {
         <div className="empty">
           <DoughBall />
           <h2>No doughs yet</h2>
-          <p>Start with a stiff biga, a runny poolish or a direct dough, or set your own ratios in a manual recipe.</p>
+          <p>Start with a stiff biga, a runny poolish or a direct dough, or write any recipe: bread, brioche, pastry, cake, in baker’s percentages or by weight.</p>
           <div className="empty-actions">
             <button type="button" className="btn primary" onClick={() => create('biga')}>
               New biga
@@ -177,8 +184,8 @@ export function HomePage() {
             <button type="button" className="btn" onClick={() => create('direct')}>
               New direct dough
             </button>
-            <button type="button" className="btn" onClick={() => create('manual')}>
-              New manual recipe
+            <button type="button" className="btn" onClick={() => setPicker(true)}>
+              Another recipe…
             </button>
           </div>
         </div>
@@ -186,7 +193,8 @@ export function HomePage() {
 
       <Sheet open={picker} onClose={() => setPicker(false)} title="New recipe">
         <div className="choice-list">
-          {KINDS.map((k) => (
+          <div className="group-label">Pizza dough, to the hour</div>
+          {DOUGH_KINDS.map((k) => (
             <button
               key={k}
               type="button"
@@ -201,9 +209,28 @@ export function HomePage() {
               </span>
               <span>
                 <b>{KIND_NAME[k]}</b>
-                <small>
-                  {KIND_BLURB[k]}
-                </small>
+                <small>{KIND_BLURB[k]}</small>
+              </span>
+              <Icon name="chevron" size={18} />
+            </button>
+          ))}
+          <div className="group-label">Any recipe, your own numbers</div>
+          {CATEGORIES.map((cat: Category) => (
+            <button
+              key={cat}
+              type="button"
+              className="choice"
+              onClick={() => {
+                setPicker(false);
+                create('manual', { category: cat });
+              }}
+            >
+              <span className="kind-badge manual" aria-hidden="true">
+                {CATEGORY_NAME[cat][0]}
+              </span>
+              <span>
+                <b>{cat === 'other' ? 'Anything else' : CATEGORY_NAME[cat]}</b>
+                <small>{CATEGORY_BLURB[cat]}</small>
               </span>
               <Icon name="chevron" size={18} />
             </button>

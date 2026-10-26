@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DEFAULTS, KIND_NAME, LIMITS, normalise, PLAY_KINDS, type Kind, type Settings } from '../../shared/recipe';
+import { DEFAULTS, KIND_NAME, LIMITS, normalise, PLAY_KINDS, type DoughKind, type Settings } from '../../shared/recipe';
 import { useCreateRecipe } from '../lib/actions';
 import { usePlayground, useSavePlay } from '../lib/query';
 import { toast } from '../lib/toast';
@@ -15,10 +15,10 @@ import { BackHome } from './RecipePage';
 const KIND_KEY = 'biga-play-kind';
 
 /** The dough type the playground was last on, remembered on this device. */
-export function storedKind(): Kind {
+export function storedKind(): DoughKind {
   try {
     const v = localStorage.getItem(KIND_KEY);
-    return PLAY_KINDS.includes(v as Kind) ? (v as Kind) : 'biga';
+    return PLAY_KINDS.includes(v as DoughKind) ? (v as DoughKind) : 'biga';
   } catch {
     return 'biga';
   }
@@ -26,7 +26,7 @@ export function storedKind(): Kind {
 
 export function PlaygroundPage() {
   const { data, isError, refetch } = usePlayground();
-  const [kind, setKind] = useState<Kind>(storedKind);
+  const [kind, setKind] = useState<DoughKind>(storedKind);
   useEffect(() => {
     try {
       localStorage.setItem(KIND_KEY, kind);
@@ -62,7 +62,7 @@ const SECTIONS = [
   { id: 'timing', label: 'Timing' },
 ] as const;
 
-function Playground({ kind, setKind, initial }: { kind: Kind; setKind: (k: Kind) => void; initial: Settings }) {
+function Playground({ kind, setKind, initial }: { kind: DoughKind; setKind: (k: DoughKind) => void; initial: Settings }) {
   const [s, setS] = useState<Settings>(initial);
   const [cook, setCook] = useState(false);
   const [menu, setMenu] = useState<null | 'menu' | 'save'>(null);

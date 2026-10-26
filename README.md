@@ -1,15 +1,19 @@
 # Biga
 
-An installable app (PWA) for planning biga, poolish and direct pizza doughs to the hour. It works out the yeast, the water temperature and the timeline, and keeps your recipes in sync across devices.
+An installable app (PWA) for planning biga, poolish and direct pizza doughs to the hour, and for keeping any other recipe (bread, sourdough, brioche, pastry, cake) in baker's percentages or by weight. It works out the yeast, the water temperature and the timeline, scales every recipe, and keeps your recipes in sync across devices.
 
 ## How it's organised
 
-- **Four kinds of recipe:** a **biga** (stiff preferment), a **poolish** (runny preferment), a **direct** dough, with no preferment: everything is mixed at once, ferments in bulk, then is balled (its yeast chart is the bulk ferment, and the schedule goes mix, ball, bake), or a **manual** recipe: your own ratios.
-- **Manual recipes** are a plain baker's-percentage calculator, for when you know your numbers: no yeast chart, no schedule, no bakes.
-  - Size: dough balls × ball weight, plus waste.
-  - Your flours, each with its share of the flour (they always add up to 100%), then water, salt, yeast and anything else you add (oil, sugar, malt…), each as a % of the flour. The grams update as you go.
-  - The water's temperature for your target dough temperature (Dough temperature card) and, past 60% hydration, how much to hold back and drizzle in.
-  - Notes, the calculator and the full-screen ingredients, like any recipe.
+- **Four kinds of recipe:** a **biga** (stiff preferment), a **poolish** (runny preferment), a **direct** dough, with no preferment: everything is mixed at once, ferments in bulk, then is balled (its yeast chart is the bulk ferment, and the schedule goes mix, ball, bake), or a **general recipe**: your own ingredients and numbers, for anything from pizza to cake.
+- **General recipes** have no yeast chart, schedule or bakes. Each has a category (Pizza, Bread, Enriched, Pastry, Cake, or anything else) that sets its starting ingredients, what its portions are called, and its method template.
+  - **Baker's percentages** (the default for doughs and pastry): the flours together are 100% and every other ingredient is a % of them, with decimals. Size: portions × weight per portion, plus waste; the grams follow. Change the portions or the weight and everything updates.
+  - **Amounts** (the default for cakes and anything else): each ingredient is a weight for one batch, which you scale by a multiplier, to a number of servings, or to a batch weight. Where there's a flour, the baker's percentages show beside the amounts. Switch a recipe between the two in its Ingredients card.
+  - **Every ingredient is yours to add, rename, zero or remove**, water, salt and yeast included. Its options set what it is (a **flour**, which counts toward the 100%; **water**, which counts toward the hydration and the water temperature; or anything else), whether it's optional, and which stage it goes in.
+  - **Amounts are always grams.** An ingredient can be read in another unit as a hint beside the grams: ml or litres (with its own grams per ml, since a ml of oil isn't a gram), kg, or whole items. **Eggs** are grams of egg without the shell, never rounded to whole eggs: a brioche at 7% eggs says 34 g, with "≈ ⅔ egg (50 g each)" beside it. Whisk the eggs and weigh out 34 g. The grams per egg can be changed (an egg 50 g, a yolk 18 g, a white 33 g).
+  - **Stages** are other parts of the recipe, such as a levain, a tangzhong or a filling, listed and totalled separately. Flour in a stage still counts toward the 100%.
+  - **Method:** numbered steps, each with an optional time, temperature (in °C, shown in °F too) and note, plus a template per category to start from. Notes, the calculator and the full-screen ingredients work like any recipe.
+  - For a dough (pizza, bread, enriched) the Dough temperature card gives the water temperature for your target dough temperature, by the heat balance, and for a pizza dough how much water to hold back past 60%.
+  - Manual recipes from before convert automatically: their flours, water, salt, yeast and extras become the ingredient list, with the same grams.
 - **Recipes** are what you use day to day: the amounts, ferment, timings and notes (the method). The schedule starts **now** and keeps up with the clock, or you can pick when you'll mix the preferment:
   - Pick a time and it means the next time the clock reads it. At 7 pm, 5 pm means 5 pm tomorrow, but a time from the last hour means today, since you've just mixed it.
   - The day shows as Today, Tomorrow or a date, and you can tap it to change it.
@@ -128,7 +132,7 @@ If Workers Logs show "exceeded CPU" on sign-in, lower `PASSWORD_ITERATIONS` in `
   - Most doughs hold up to about 48 h in the fridge.
   - All-biga doughs hold only 12–16 h before they run out of sugar.
 
-The maths lives in `src/lib/dough.ts`, with tests in `src/lib/dough.test.ts`. The tests run in Sydney time so the clock-change cases are real.
+The dough maths lives in `src/lib/dough.ts`, with tests in `src/lib/dough.test.ts`. The tests run in Sydney time so the clock-change cases are real. General recipes are worked out in `src/lib/formula.ts` (tests in `src/lib/formula.test.ts`), from the shape in `shared/formula.ts`.
 
 ## Toppings
 
@@ -158,9 +162,11 @@ pnpm build && pnpm preview   # production build, service worker included
 
 ```
 src/            React app: routes/ (home, recipe, bake, playground, toppings), components/ (Dough.tsx holds
-                the calculator cards every page shares; Calculator.tsx the keypad; NotesMath.ts the sums in notes),
-                lib/ (dough maths, math.ts for sums, toppings, query + offline cache, auth client)
-shared/         recipe, bake, playground and topping types + validation, used by app and Worker
+                the calculator cards every dough page shares; Formula.tsx the cards of a general recipe;
+                Calculator.tsx the keypad; NotesMath.ts the sums in notes),
+                lib/ (dough maths, formula.ts for general recipes, math.ts for sums, toppings, query + offline cache, auth client)
+shared/         recipe, bake, playground and topping types + validation, used by app and Worker. formula.ts is the
+                general recipe ('manual' kind): its ingredients, scaling and steps, and the conversion of old manual recipes
 worker/         Hono API: auth.ts (Better Auth), password.ts, recipes.ts, bakes.ts, playground.ts, toppings.ts
 migrations/     D1 schema. 0003_bakes adds bakes and the playground, and turns any recipe start time from the
                 last week into a bake so a schedule in progress isn't lost. 0003_toppings adds toppings

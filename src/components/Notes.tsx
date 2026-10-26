@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import type { Kind } from '../../shared/recipe';
+import type { DoughKind } from '../../shared/recipe';
 import type { Vars } from '../lib/math';
 import { mobileOrder } from './Fold';
 import type { NotesEditorProps } from './NotesEditor';
@@ -69,7 +69,7 @@ const BALLS = `## Balls
 - [ ] Flour the bench and the peel
 `;
 
-/** One mix, no preferment: a direct dough's method, and a manual recipe's starting point. */
+/** One mix, no preferment: a direct dough's method. */
 const DIRECT = `## Dough
 1. Dissolve the yeast in most of the water.
 2. Add the flour and mix until it comes together.
@@ -80,7 +80,7 @@ const DIRECT = `## Dough
 ${BALLS}`;
 
 /** A starting point for a recipe's method. No amounts or times: those live in the recipe. */
-export const METHOD_TEMPLATE: Record<Kind, string> = {
+export const METHOD_TEMPLATE: Record<DoughKind, string> = {
   biga: `## Biga
 1. Dissolve the yeast in the water.
 2. Add the flour and mix just until there's no dry flour left. It should look shaggy and lumpy, not smooth.
@@ -105,6 +105,5 @@ ${BALLS}`,
 
 ${BALLS}`,
   direct: DIRECT,
-  manual: DIRECT,
 };
 

@@ -121,7 +121,7 @@ function BakeEditor({ bake, recipe }: { bake: Bake; recipe: Recipe | undefined }
   };
 
   const updateRecipe = () => {
-    if (!recipe) return;
+    if (!recipe || recipe.kind === 'manual') return;
     const before = recipe;
     saveRecipe.mutate({ ...recipe, settings: s, updatedAt: Date.now() });
     setMenu(null);
@@ -252,7 +252,7 @@ function BakeEditor({ bake, recipe }: { bake: Bake; recipe: Recipe | undefined }
                   onClick={() => {
                     autosave.flush();
                     setMenu(null);
-                    startBake(recipe, s);
+                    startBake({ id: recipe.id, kind }, s);
                   }}
                 >
                   <Icon name="flame" /> Bake again with these settings

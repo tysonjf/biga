@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { cleanNotes, LIMITS, normalise, type Kind, type Recipe } from '../shared/recipe';
+import { cleanNotes, LIMITS, normaliseFor, type Kind, type Recipe } from '../shared/recipe';
 import { badId, err, isKind, readBody, safeJson, stamps, type AppEnv } from './common';
 
 type Row = {
@@ -13,15 +13,17 @@ type Row = {
   updated_at: number;
 };
 
-const toRecipe = (r: Row): Recipe => ({
-  id: r.id,
-  kind: r.kind,
-  name: r.name,
-  settings: normalise(r.kind, safeJson(r.settings)),
-  notes: r.notes ?? '',
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-});
+const toRecipe = (r: Row): Recipe =>
+  ({
+    id: r.id,
+    kind: r.kind,
+    name: r.name,
+    // A general ('manual') recipe stores a Formula; the dough kinds store Settings.
+    settings: normaliseFor(r.kind, safeJson(r.settings)),
+    notes: r.notes ?? '',
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }) as Recipe;
 
 export const recipes = new Hono<AppEnv>();
 
@@ -48,7 +50,7 @@ recipes.put('/:id', async (c) => {
   const kind = body.kind;
   if (!isKind(kind)) return c.json(err('Unknown recipe type.', 'BAD_KIND'), 400);
   const name = (typeof body.name === 'string' ? body.name : '').trim().slice(0, LIMITS.name) || 'Untitled';
-  const settings = JSON.stringify(normalise(kind, body.settings));
+  const settings = JSON.stringify(normaliseFor(kind, body.settings));
   // Apps from before notes existed don't send them: leave whatever is stored alone.
   const notes = cleanNotes(body.notes);
   const { createdAt, updatedAt } = stamps(body);

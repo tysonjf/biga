@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { KIND_NAME, LIMITS, type Bake, type Recipe, type Settings } from '../../shared/recipe';
+import { CATEGORY_NAME } from '../../shared/formula';
+import { KIND_NAME, LIMITS, type Bake, type DoughRecipe, type GeneralRecipe, type Recipe } from '../../shared/recipe';
 import { useCreateRecipe, useStartBake } from '../lib/actions';
+import { formulaSummary } from '../lib/formula';
 import { Locked, useLock } from '../lib/lock';
+import type { Vars } from '../lib/math';
 import { useBakes, useDeleteRecipe, useRecipe, useSaveBake, useSaveRecipe } from '../lib/query';
 import { toast } from '../lib/toast';
 import { useDebouncedEffect } from '../lib/useDebounced';
@@ -10,10 +13,10 @@ import { useNow } from '../lib/useNow';
 import { useStoredFlag } from '../lib/useStoredFlag';
 import { BakeRow } from '../components/BakeRow';
 import { CalculatorCard } from '../components/Calculator';
-import { ManualCard } from '../components/Manual';
 import { doughSummary, DoughCard, HowCard, JumpNav, RecipeCard, TempFold, TimingFold, useDough, usePlanStart, YeastCard } from '../components/Dough';
+import { CategoryChips, FormulaCard, FormulaTemp, MethodCard, useFormula } from '../components/Formula';
 import { Icon } from '../components/Icon';
-import { IngredientsView } from '../components/IngredientsView';
+import { IngredientsView, type Stage } from '../components/IngredientsView';
 import { useLockButton } from '../components/LockButton';
 import { METHOD_TEMPLATE, NotesCard } from '../components/Notes';
 import { Page } from '../components/Page';
@@ -24,7 +27,7 @@ export function RecipePage() {
   const { id } = useParams({ from: '/r/$id' });
   const { recipe, isPending } = useRecipe(id);
   if (!recipe) return <Missing busy={isPending} />;
-  return <RecipeEditor key={recipe.id} recipe={recipe} />;
+  return recipe.kind === 'manual' ? <GeneralEditor key={recipe.id} recipe={recipe} /> : <DoughEditor key={recipe.id} recipe={recipe} />;
 }
 
 function Missing({ busy }: { busy: boolean }) {
@@ -63,67 +66,61 @@ const SECTIONS = [
   { id: 'calc', label: 'Calculator' },
 ] as const;
 
-const MANUAL_SECTIONS = [
+const GENERAL_SECTIONS = [
   { id: 'ingredients', label: 'Ingredients' },
+  { id: 'method', label: 'Method' },
   { id: 'notes', label: 'Notes' },
   { id: 'calc', label: 'Calculator' },
 ] as const;
 
 const byStart = (a: Bake, b: Bake) => (b.start || '').localeCompare(a.start || '') || b.createdAt - a.createdAt;
 
-function RecipeEditor({ recipe }: { recipe: Recipe }) {
-  const kind = recipe.kind;
+const cleanName = (name: string) => name.trim().slice(0, LIMITS.name) || 'Untitled';
+
+/**
+ * The recipe as you edit it: local state is the source of truth while editing, saved after a pause and
+ * applied to the cache optimistically. Shared by both editors; only the settings' shape differs.
+ */
+function useDraft<R extends Recipe>(recipe: R) {
   const [name, setName] = useState(recipe.name);
-  const [s, setS] = useState<Settings>(recipe.settings);
+  const [s, setS] = useState<R['settings']>(recipe.settings);
   const [notes, setNotes] = useState(recipe.notes ?? '');
+  const save = useSaveRecipe();
+  const current = (): R => ({ ...recipe, name: cleanName(name), settings: s, notes }) as R;
+  const draft = useMemo(() => ({ name, s, notes }), [name, s, notes]);
+  const autosave = useDebouncedEffect(draft, 400, (x) => save.mutate({ ...recipe, name: cleanName(x.name), settings: x.s, notes: x.notes, updatedAt: Date.now() } as R));
+  return { name, setName, s, setS, notes, setNotes, current, autosave };
+}
+type Draft<R extends Recipe> = ReturnType<typeof useDraft<R>>;
+
+type ShellProps<R extends Recipe> = {
+  recipe: R;
+  draft: Draft<R>;
+  /** The chip beside the name: the dough kind, or a general recipe's category. */
+  chip: string;
+  sub: string;
+  stages: Stage[];
+  sections: readonly { id: string; label: string }[];
+  onJump?: (id: string) => void;
+  bakes: Bake[];
+  /** Starts a bake (dough recipes only). */
+  onBake?: () => void;
+  /** Shown under the name while editing (a general recipe's category). */
+  extra?: ReactNode;
+  children: (ctx: { openFull: () => void; locked: boolean }) => ReactNode;
+};
+
+/** The page around a recipe: its name and chip, the lock, the actions menu, the full-screen ingredients and deleting. */
+function RecipeShell<R extends Recipe>({ recipe, draft, chip, sub, stages, sections, onJump, bakes, onBake, extra, children }: ShellProps<R>) {
+  const { name, setName, current, autosave } = draft;
   const [locked, setLocked] = useLock(recipe.id);
   const [menu, setMenu] = useState<null | 'menu' | 'delete'>(null);
   const [cook, setCook] = useState(false);
-  const [timingOpen, setTimingOpen] = useStoredFlag('biga-open-timing', false);
   const save = useSaveRecipe();
   const del = useDeleteRecipe();
   const saveBake = useSaveBake();
   const navigate = useNavigate();
   const create = useCreateRecipe();
-  const startBake = useStartBake();
-  const { data: allBakes } = useBakes();
-  const bakes = useMemo(() => (allBakes ?? []).filter((b) => b.recipeId === recipe.id).sort(byStart), [allBakes, recipe.id]);
-
-  // A recipe has no clock times of its own: its schedule is shown as if you started now.
-  const { start, planned } = usePlanStart(kind, s);
-  const d = useDough(kind, s, setS, start, !planned);
-  const sub = doughSummary(s, d.c);
-  // A manual recipe is a plain ratio calculator: no yeast chart, schedule or bakes.
-  const manual = kind === 'manual';
-  // Notes aren't settings: they stay editable while the recipe is locked.
-  const notesCard = (order: number) => (
-    <NotesCard
-      id="notes"
-      title="Notes"
-      hint="Method, tips, what to look for"
-      value={notes}
-      onChange={setNotes}
-      editable
-      placeholder="Write the method, tips, and what to look for…"
-      empty=""
-      template={METHOD_TEMPLATE[kind]}
-      order={order}
-      vars={d.scope}
-    />
-  );
-
-  // Autosave: local state is the source of truth while editing; the cache is updated optimistically.
-  const current = (): Recipe => ({ ...recipe, name: name.trim().slice(0, LIMITS.name) || 'Untitled', settings: s, notes });
-  const draft = useMemo(() => ({ name, s, notes }), [name, s, notes]);
-  const autosave = useDebouncedEffect(draft, 400, (x) =>
-    save.mutate({ ...recipe, name: x.name.trim().slice(0, LIMITS.name) || 'Untitled', settings: x.s, notes: x.notes, updatedAt: Date.now() }),
-  );
-
-  const bake = () => {
-    autosave.flush();
-    setMenu(null);
-    startBake(recipe, s, planned ? s.plan : undefined);
-  };
 
   const lock = useLockButton(locked, (next) => {
     if (next) {
@@ -149,6 +146,13 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
     });
   };
 
+  const duplicate = () => {
+    autosave.flush();
+    setMenu(null);
+    const r = current();
+    create(r.kind, { name: `${r.name} (copy)`, settings: r.settings, notes: r.notes });
+  };
+
   return (
     <Locked.Provider value={locked}>
       <Page
@@ -166,7 +170,7 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
         }
         large={
           <div className="title-block">
-            <span className={`chip ${kind}`}>{KIND_NAME[kind]}</span>
+            <span className={`chip ${recipe.kind}`}>{chip}</span>
             <input
               className="title-input"
               value={name}
@@ -180,43 +184,15 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
             <p className="title-sub">{sub}</p>
-            {locked ? null : <p className="editing-note">Editing the recipe. Changes save as you go; bakes you’ve already started keep their own copy.</p>}
+            {locked ? null : <p className="editing-note">Editing the recipe. Changes save as you go{onBake ? '; bakes you’ve already started keep their own copy' : ''}.</p>}
+            {locked ? null : extra}
           </div>
         }
-        below={<JumpNav sections={manual ? MANUAL_SECTIONS : SECTIONS} onJump={(id) => id === 'timing' && setTimingOpen(true)} />}
+        below={<JumpNav sections={sections} onJump={onJump} />}
       >
-        {manual ? (
-          // A manual recipe is a ratio calculator: your ingredients, their temperatures, your notes.
-          <div className="cols">
-            <div className="col">
-              <ManualCard d={d} onFull={() => setCook(true)} order={1} />
-              {notesCard(3)}
-            </div>
-            <div className="col sticky">
-              <TempFold d={d} order={2} />
-              <CalculatorCard vars={d.vars} scope={d.scope} order={4} />
-            </div>
-          </div>
-        ) : (
-          <div className="cols">
-            <div className="col">
-              <YeastCard d={d} order={1} planner />
-              <DoughCard d={d} order={2} />
-              {notesCard(4)}
-              {/* Last on a phone; under the notes on a computer. */}
-              <CalculatorCard vars={d.vars} scope={d.scope} order={9} />
-            </div>
-            <div className="col sticky">
-              <RecipeCard d={d} onFull={() => setCook(true)} order={3} />
-              <TempFold d={d} order={5} />
-              <TimingFold d={d} open={timingOpen} onToggle={setTimingOpen} order={6} />
-              <BakesCard bakes={bakes} onStart={bake} order={7} />
-              <HowCard c={d.c} order={8} />
-            </div>
-          </div>
-        )}
+        {children({ openFull: () => setCook(true), locked })}
 
-        <IngredientsView open={cook} onClose={() => setCook(false)} title={name || 'Untitled'} sub={sub} stages={d.stages} />
+        <IngredientsView open={cook} onClose={() => setCook(false)} title={name || 'Untitled'} sub={sub} stages={stages} />
 
         <Sheet
           open={menu !== null}
@@ -242,12 +218,19 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
             </>
           ) : (
             <div className="sheet-actions">
-              {/* A manual recipe has no schedule to follow. */}
-              {manual ? null : (
-                <button type="button" className="action" onClick={bake}>
+              {/* A general recipe has no schedule to follow. */}
+              {onBake ? (
+                <button
+                  type="button"
+                  className="action"
+                  onClick={() => {
+                    setMenu(null);
+                    onBake();
+                  }}
+                >
                   <Icon name="flame" /> Start a bake
                 </button>
-              )}
+              ) : null}
               <button
                 type="button"
                 className="action"
@@ -258,15 +241,7 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
               >
                 <Icon name="expand" /> Ingredients full screen
               </button>
-              <button
-                type="button"
-                className="action"
-                onClick={() => {
-                  autosave.flush();
-                  setMenu(null);
-                  create(kind, { name: `${current().name} (copy)`, settings: s, notes });
-                }}
-              >
+              <button type="button" className="action" onClick={duplicate}>
                 <Icon name="copy" /> Duplicate
               </button>
               <button type="button" className="action danger" onClick={() => setMenu('delete')}>
@@ -280,6 +255,115 @@ function RecipeEditor({ recipe }: { recipe: Recipe }) {
         </Sheet>
       </Page>
     </Locked.Provider>
+  );
+}
+
+/** Notes aren't settings: they stay editable while the recipe is locked. */
+function notesCard(draft: { notes: string; setNotes: (v: string) => void }, vars: Vars, order: number, template?: string) {
+  return (
+    <NotesCard
+      id="notes"
+      title="Notes"
+      hint="Method, tips, what to look for"
+      value={draft.notes}
+      onChange={draft.setNotes}
+      editable
+      placeholder="Write the method, tips, and what to look for…"
+      empty=""
+      template={template}
+      order={order}
+      vars={vars}
+    />
+  );
+}
+
+/* ---------- a biga, poolish or direct dough ---------- */
+
+function DoughEditor({ recipe }: { recipe: DoughRecipe }) {
+  const kind = recipe.kind;
+  const draft = useDraft(recipe);
+  const { s, setS } = draft;
+  const [timingOpen, setTimingOpen] = useStoredFlag('biga-open-timing', false);
+  const startBake = useStartBake();
+  const { data: allBakes } = useBakes();
+  const bakes = useMemo(() => (allBakes ?? []).filter((b) => b.recipeId === recipe.id).sort(byStart), [allBakes, recipe.id]);
+
+  // A recipe has no clock times of its own: its schedule is shown as if you started now.
+  const { start, planned } = usePlanStart(kind, s);
+  const d = useDough(kind, s, setS, start, !planned);
+  const sub = doughSummary(s, d.c);
+
+  const bake = () => {
+    draft.autosave.flush();
+    startBake(recipe, s, planned ? s.plan : undefined);
+  };
+
+  return (
+    <RecipeShell
+      recipe={recipe}
+      draft={draft}
+      chip={KIND_NAME[kind]}
+      sub={sub}
+      stages={d.stages}
+      sections={SECTIONS}
+      onJump={(id) => id === 'timing' && setTimingOpen(true)}
+      bakes={bakes}
+      onBake={bake}
+    >
+      {({ openFull }) => (
+        <div className="cols">
+          <div className="col">
+            <YeastCard d={d} order={1} planner />
+            <DoughCard d={d} order={2} />
+            {notesCard(draft, d.scope, 4, METHOD_TEMPLATE[kind])}
+            {/* Last on a phone; under the notes on a computer. */}
+            <CalculatorCard vars={d.vars} scope={d.scope} order={9} />
+          </div>
+          <div className="col sticky">
+            <RecipeCard d={d} onFull={openFull} order={3} />
+            <TempFold d={d} order={5} />
+            <TimingFold d={d} open={timingOpen} onToggle={setTimingOpen} order={6} />
+            <BakesCard bakes={bakes} onStart={bake} order={7} />
+            <HowCard c={d.c} order={8} />
+          </div>
+        </div>
+      )}
+    </RecipeShell>
+  );
+}
+
+/* ---------- a general recipe: baker's percentages or amounts, any category ---------- */
+
+function GeneralEditor({ recipe }: { recipe: GeneralRecipe }) {
+  const draft = useDraft(recipe);
+  const { s, setS } = draft;
+  const d = useFormula(s, setS);
+  const sub = formulaSummary(s, d.c);
+  return (
+    <RecipeShell
+      recipe={recipe}
+      draft={draft}
+      chip={CATEGORY_NAME[s.category]}
+      sub={sub}
+      stages={d.stages}
+      sections={GENERAL_SECTIONS}
+      bakes={[]}
+      extra={<CategoryChips d={d} />}
+    >
+      {({ openFull }) => (
+        <div className="cols">
+          <div className="col">
+            <FormulaCard d={d} onFull={openFull} order={1} />
+            {notesCard(draft, d.scope, 4)}
+          </div>
+          <div className="col sticky">
+            <MethodCard d={d} order={2} />
+            {d.c.dough ? <FormulaTemp d={d} order={3} /> : null}
+            <CalculatorCard vars={d.vars} scope={d.scope} order={5} />
+          </div>
+        </div>
+      )}
+    </RecipeShell>
   );
 }
 

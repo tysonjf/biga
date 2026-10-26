@@ -438,61 +438,6 @@ describe('direct dough', () => {
   });
 });
 
-describe('manual recipe', () => {
-  const manual = (o: Partial<Settings> = {}) => ({ ...structuredClone(DEFAULTS.manual), ...o });
-
-  it('is plain baker’s percentages: every ingredient a share of the flour, adding up to the dough', () => {
-    const s = manual({ balls: 4, bw: 275, waste: 0, hyd: 73, salt: 2.5, idy: 0.08, extras: [{ name: 'Olive oil', pct: 2 }] });
-    const c = calc('manual', s);
-    expect(c.dough).toBe(1100);
-    expect(c.flour).toBeCloseTo(1100 / 1.7758, 6);
-    expect(c.final.water).toBeCloseTo(c.flour * 0.73, 9);
-    expect(c.final.salt).toBeCloseTo(c.flour * 0.025, 9);
-    expect(c.final.yeast).toBeCloseTo(c.flour * 0.0008, 9);
-    expect(c.extras).toEqual([{ name: 'Olive oil', pct: 2, grams: c.flour * 0.02 }]);
-    const sum = c.final.flour + c.final.water + c.final.salt + c.final.yeast + c.extras[0].grams;
-    expect(sum).toBeCloseTo(c.dough, 6);
-    expect(c.pre.total).toBe(0);
-  });
-
-  it('matches the levain-style screenshot: 626 g flour, 457 g water, 15.7 g salt, 0.5 g yeast', () => {
-    const c = calc('manual', manual({ balls: 4, bw: 275, waste: 0, hyd: 73, salt: 2.5, idy: 0.08 }));
-    expect(c.flour).toBeCloseTo(626.49, 1);
-    expect(c.final.water).toBeCloseTo(457.34, 1);
-    expect(c.final.salt).toBeCloseTo(15.66, 1);
-    expect(c.final.yeast).toBeCloseTo(0.5, 1);
-  });
-
-  it('splits the flour by its shares', () => {
-    const c = calc('manual', manual({ flours: [{ name: 'Tipo 00', pct: 80, fin: 80 }, { name: 'Wholemeal', pct: 20, fin: 20 }] }));
-    expect(c.flours[0].fin / c.flour).toBeCloseTo(0.8, 9);
-    expect(c.flours[1].fin / c.flour).toBeCloseTo(0.2, 9);
-  });
-
-  it('works out the water temperature and the 60% split, with no chart or warnings', () => {
-    const c = calc('manual', manual({ hyd: 73 }));
-    expect(c.mixWater).not.toBeNull();
-    expect(c.holdBack!.first + c.holdBack!.rest).toBe(Math.round(c.final.water));
-    expect(c.bigaWater).toBeNull();
-    expect(c.warnings).toEqual([]);
-  });
-
-  it('stores its ingredients, in range', () => {
-    expect(normalise('manual', {})).toEqual(DEFAULTS.manual);
-    const s = normalise('manual', { extras: [{ name: 'Malt', pct: 0.5 }, { pct: 200 }, 'junk', { name: 'x'.repeat(99), pct: -3 }] });
-    expect(s.extras).toEqual([
-      { name: 'Malt', pct: 0.5 },
-      { name: 'Ingredient', pct: 100 },
-      { name: 'x'.repeat(40), pct: 0 },
-    ]);
-    expect(normalise('manual', { idy: 9 }).idy).toBe(5);
-  });
-
-  it('leaves the other kinds without extras', () => {
-    expect(calc('biga', biga()).extras).toEqual([]);
-  });
-});
-
 describe('water temperature rules', () => {
   it('uses the heat balance unless told otherwise', () => {
     const c = calc('biga', biga());

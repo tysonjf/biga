@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
-import { cleanNotes, cleanStart, ID_RE, LIMITS, normalise, type Bake, type Kind } from '../shared/recipe';
-import { badId, err, isKind, readBody, safeJson, stamps, type AppEnv } from './common';
+import { cleanNotes, cleanStart, ID_RE, LIMITS, normalise, type Bake, type DoughKind } from '../shared/recipe';
+import { badId, err, isDoughKind, readBody, safeJson, stamps, type AppEnv } from './common';
 
 type Row = {
   id: string;
   user_id: string;
   recipe_id: string;
-  kind: Kind;
+  kind: DoughKind;
   name: string;
   settings: string;
   start: string;
@@ -48,7 +48,7 @@ bakes.put('/:id', async (c) => {
   if (error) return error;
 
   const kind = body.kind;
-  if (!isKind(kind)) return c.json(err('Unknown recipe type.', 'BAD_KIND'), 400);
+  if (!isDoughKind(kind)) return c.json(err('Only dough recipes have bakes.', 'BAD_KIND'), 400);
   const recipeId = body.recipeId;
   if (typeof recipeId !== 'string' || !ID_RE.test(recipeId)) return c.json(err('Bad recipe id.', 'BAD_ID'), 400);
   const name = (typeof body.name === 'string' ? body.name : '').trim().slice(0, LIMITS.name);

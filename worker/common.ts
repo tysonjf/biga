@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import { ID_RE, KINDS, LIMITS, type Kind } from '../shared/recipe';
+export { isDoughKind } from '../shared/recipe';
 
 export type AppEnv = { Bindings: Env; Variables: { userId: string } };
 

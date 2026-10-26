@@ -1,10 +1,10 @@
-import { DEFAULTS, type Kind, type Settings, type WaterRule } from '../../shared/recipe';
+import { DEFAULTS, type DoughKind, type Settings, type WaterRule } from '../../shared/recipe';
 import { doughMultiplier, eqHours, freshForEqHours, IDY_PER_FRESH, rateAt, stretch, tauHours, type Segment } from './craig';
 
 /* ---------- preferment yeast models ---------- */
 
 export type Model = {
-  kind: Kind;
+  kind: DoughKind;
   /** What ferments on the chart: the preferment, or for a direct dough the whole dough. */
   name: string;
   temps: number[];
@@ -23,7 +23,7 @@ const range = (from: number, to: number, step = 1) =>
 const model = (A: number, T0: number, H0: number, D: number, k: number) => (t: number, h: number) =>
   A * Math.pow(H0 / h, k) * Math.pow(2, (T0 - t) / D);
 
-export const MODELS: Record<Kind, Model> = {
+export const MODELS: Record<DoughKind, Model> = {
   biga: {
     kind: 'biga',
     name: 'Biga',
@@ -58,23 +58,13 @@ export const MODELS: Record<Kind, Model> = {
       'Ready to ball when it has about doubled, feels airy and slightly domed, and shows bubbles on the sides and bottom of the container.',
     note: 'Craig’s yeast chart from pizzamaking.com, for a dough that about doubles, worked out over the whole schedule: the bulk, the balls, and any time in the fridge, following the dough’s own temperature as it cools down in the fridge and warms up again afterwards (the first warm hours in the fridge do a lot of the work). A 4 °C fridge runs at about a twelfth of room speed. Salt, oil and sugar slow it a little, water speeds it up. Home recipes such as Forkish’s or King Arthur’s use 1.5–3× more yeast for a bigger rise.',
   },
-  // A manual recipe has no chart: its yeast is your own. This only names it and gives it a schedule.
-  manual: {
-    kind: 'manual',
-    name: 'Dough',
-    temps: range(2, 32),
-    hours: range(1, 96),
-    idy: () => 0,
-    ready: 'Ready when it has about doubled and feels airy.',
-    note: '',
-  },
 };
 
 export const nearest = (list: number[], v: number) =>
   list.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
 
-/** A direct dough or a manual recipe: one mix, no preferment. */
-export const noPreferment = (kind: Kind) => kind === 'direct' || kind === 'manual';
+/** A direct dough: one mix, no preferment. */
+export const noPreferment = (kind: DoughKind) => kind === 'direct';
 
 /* ---------- direct dough yeast ---------- */
 
@@ -287,8 +277,6 @@ export type Calc = {
   /** Flours are set separately for the preferment and the final dough. */
   split: boolean;
   flours: FlourLine[];
-  /** A manual recipe's own ingredients, in grams. */
-  extras: { name: string; pct: number; grams: number }[];
   /** Water for mixing the biga itself (Giorilli); null for a poolish or a direct dough. */
   bigaWater: BigaWater | null;
   mixWater: WaterTemp | null;
@@ -352,7 +340,7 @@ export function balance(pcts: number[], keep = -1): number[] {
 /** Sets flour `i` to `v`% and lets the others make up the difference (see `balance`). */
 export const rebalance = (pcts: number[], i: number, v: number) => balance(pcts.map((p, j) => (j === i ? v : p)), i);
 
-export function calc(kind: Kind, s: Settings): Calc {
+export function calc(kind: DoughKind, s: Settings): Calc {
   const m = MODELS[kind];
   const temp = nearest(m.temps, s.temp);
   const hours = nearest(m.hours, s.hours);
@@ -361,13 +349,10 @@ export function calc(kind: Kind, s: Settings): Calc {
   const oil = s.oil / 100;
   const sugar = s.sugar / 100;
   // A direct dough has no preferment: the chart's yeast goes into the one mix, for all the flour.
-  // A manual recipe is the same, with your own yeast.
   const direct = noPreferment(kind);
-  const manual = kind === 'manual';
   // The chart's yeast, % of the preferment's flour (a direct dough's flour).
   const charted = kind === 'direct' ? directIdy(s, temp, hours) : m.idy(temp, hours);
-  const chartIdy = (manual ? s.idy : charted * (1 + s.boost / 100)) / 100;
-  const extraPct = s.extras.reduce((a, x) => a + x.pct, 0) / 100;
+  const chartIdy = (charted * (1 + s.boost / 100)) / 100;
   const bp = direct ? 0 : Math.min(Math.max(s.bp, 0), 100) / 100;
   const bh = (kind === 'poolish' ? 100 : s.bh) / 100;
   const finalIdy = direct ? chartIdy * 100 : s.fy * roomFactor(s.room);
@@ -375,7 +360,7 @@ export function calc(kind: Kind, s: Settings): Calc {
   const preIdy = chartIdy;
 
   const dough = s.balls * s.bw * (1 + s.waste / 100);
-  const FL = dough / (1 + hyd + salt + oil + sugar + fy + preIdy * bp + extraPct);
+  const FL = dough / (1 + hyd + salt + oil + sugar + fy + preIdy * bp);
   const bF = FL * bp;
   const bW = bF * bh;
   const bY = bF * preIdy;
@@ -456,7 +441,6 @@ export function calc(kind: Kind, s: Settings): Calc {
     final: { flour: fF, water: fW, salt: fS, oil: fO, sugar: fSu, yeast: fY },
     split,
     flours,
-    extras: s.extras.map((x) => ({ ...x, grams: (FL * x.pct) / 100 })),
     bigaWater: kind === 'biga' ? giorilli(s.room, s.flourT) : null,
     mixWater,
     waterBy,
@@ -467,7 +451,7 @@ export function calc(kind: Kind, s: Settings): Calc {
   };
 }
 
-function holdBack(flour: number, preWater: number, water: number, hyd: number) {
+export function holdBack(flour: number, preWater: number, water: number, hyd: number) {
   const first = Math.round((flour * FIRST_HYD) / 100 - preWater);
   const all = Math.round(water);
   if (hyd <= FIRST_HYD || first <= 0 || first >= all) return null;
@@ -480,7 +464,7 @@ export type DoughVar = { name: string; value: number; unit: string };
  * The recipe's amounts by name, for sums in the calculator and the notes ("flour × 2% ="). Grams
  * are whole, as the Recipe card shows them, so a sum agrees with what's on screen.
  */
-export function doughVars(kind: Kind, s: Settings, c: Calc): DoughVar[] {
+export function doughVars(kind: DoughKind, s: Settings, c: Calc): DoughVar[] {
   const g = (name: string, v: number) => ({ name, value: Math.round(v), unit: 'g' });
   return [
     g('flour', c.flour),
@@ -521,12 +505,12 @@ export function fmtDur(min: number): string {
  * Minutes from the end of the chart's ferment until the balls are ready to bake: for a preferment,
  * the final mix, bulk and balls; for a direct dough, whose chart is its bulk, just the balls.
  */
-export function afterReady(kind: Kind, s: Settings): number {
+export function afterReady(kind: DoughKind, s: Settings): number {
   const balls = s.fridge ? s.fridgeRest + s.fridgeH * 60 + s.temper : s.proof;
   return noPreferment(kind) ? balls : s.mix + s.bulk + balls;
 }
 
-export function timeline(kind: Kind, s: Settings, start: Date): Timeline {
+export function timeline(kind: DoughKind, s: Settings, start: Date): Timeline {
   const m = MODELS[kind];
   const H = nearest(m.hours, s.hours);
   const b = (Math.max(0, s.buf) / 100) * H * 60;
@@ -626,7 +610,7 @@ export function nextAt(hhmm: string, now: Date): Date {
  * Where a recipe's schedule starts: its planned mix time while that schedule is still going (up to a
  * few hours after the dough is ready to bake), otherwise now, to the nearest 5 minutes.
  */
-export function planStart(kind: Kind, s: Settings, now: Date): { start: Date; planned: boolean } {
+export function planStart(kind: DoughKind, s: Settings, now: Date): { start: Date; planned: boolean } {
   const plan = parseStart(s.plan);
   if (plan && timeline(kind, s, plan).bake.getTime() + BAKE_GRACE_MIN * 60_000 > now.getTime()) return { start: plan, planned: true };
   return { start: new Date(Math.round(now.getTime() / 300_000) * 300_000), planned: false };
@@ -692,7 +676,7 @@ export type BakeStatus = {
 /** How long after "ready to bake" a bake still counts as on the go. */
 export const BAKE_GRACE_MIN = 6 * 60;
 
-export function bakeStatus(kind: Kind, tl: Timeline, now: Date): BakeStatus {
+export function bakeStatus(kind: DoughKind, tl: Timeline, now: Date): BakeStatus {
   const { steps } = tl;
   const t = now.getTime();
   const i = steps.findLastIndex((s) => s.at.getTime() <= t);

@@ -5,12 +5,18 @@
 // without touching the recipe), and adds when the preferment was mixed and notes of its own.
 // The playground is a scratch recipe per preferment that saves as you go.
 
-// A direct dough has no preferment: everything is mixed at once and ferments in bulk. A manual
-// recipe is a plain baker's-percentage calculator: your own ratios, no yeast chart or schedule.
-export type Kind = 'biga' | 'poolish' | 'direct' | 'manual';
-export const KINDS: Kind[] = ['biga', 'poolish', 'direct', 'manual'];
+import { normaliseFormula, type Formula } from './formula';
+
+// The dough kinds have a yeast chart and a schedule. A direct dough has no preferment: everything is
+// mixed at once and ferments in bulk. A 'manual' recipe is a general recipe (shared/formula.ts): your
+// own ingredients, as baker's percentages or plain amounts, with no chart or schedule.
+export type DoughKind = 'biga' | 'poolish' | 'direct';
+export type Kind = DoughKind | 'manual';
+export const DOUGH_KINDS: DoughKind[] = ['biga', 'poolish', 'direct'];
+export const KINDS: Kind[] = [...DOUGH_KINDS, 'manual'];
 /** The kinds with a playground: the ones with a yeast chart to try out. */
-export const PLAY_KINDS: Kind[] = ['biga', 'poolish', 'direct'];
+export const PLAY_KINDS: DoughKind[] = DOUGH_KINDS;
+export const isDoughKind = (v: unknown): v is DoughKind => DOUGH_KINDS.includes(v as DoughKind);
 
 /**
  * How the final mix's water temperature is worked out: the heat balance (each ingredient by its weight
@@ -19,9 +25,6 @@ export const PLAY_KINDS: Kind[] = ['biga', 'poolish', 'direct'];
  */
 export type WaterRule = 'balance' | 'ddt' | 'base';
 export const WATER_RULES: WaterRule[] = ['balance', 'ddt', 'base'];
-
-/** A manual recipe's own ingredient: oil, sugar, malt, anything. */
-export type Extra = { name: string; pct: number };
 
 export type Flour = {
   name: string;
@@ -40,8 +43,6 @@ export type Settings = {
   bp: number; // preferment share, % of total flour (not used by a direct dough)
   bh: number; // preferment hydration, % of preferment flour (not used by a direct dough)
   boost: number; // ± % on the charted yeast
-  idy: number; // a manual recipe's yeast, % of flour
-  extras: Extra[]; // a manual recipe's other ingredients, % of flour
   fy: number; // final dough IDY, % of total flour, for a 18–24 °C proofing room (not used by a direct dough)
   temp: number; // preferment ferment temperature, °C; a direct dough's bulk ferment temperature
   hours: number; // preferment ferment time, h; a direct dough's bulk ferment time
@@ -90,7 +91,6 @@ export const FIELDS: Record<NumKey, Field> = {
   bh: { label: 'Hydration', unit: '%', step: 1, min: 40, max: 125, dec: 0 },
   boost: { label: 'Yeast boost', unit: '%', step: 5, min: -90, max: 300, dec: 0 },
   fy: { label: 'Final dough IDY', unit: '% flour', step: 0.05, min: 0, max: 1, dec: 2 },
-  idy: { label: 'Yeast', unit: '%', step: 0.01, min: 0, max: 5, dec: 3 },
   temp: { label: 'Ferment temp', unit: '°C', step: 1, min: 2, max: 32, dec: 0 },
   hours: { label: 'Ferment time', unit: 'h', step: 1, min: 1, max: 96, dec: 0 },
   buf: { label: 'Ready window', unit: '± %', step: 5, min: 0, max: 50, dec: 0 },
@@ -120,8 +120,6 @@ const COMMON = {
   oil: 0,
   sugar: 0,
   boost: 0,
-  idy: 0.1,
-  extras: [],
   fy: 0.1,
   buf: 15,
   mix: 30,
@@ -144,23 +142,20 @@ const COMMON = {
   plan: '',
 } satisfies Partial<Settings>;
 
-export const DEFAULTS: Record<Kind, Settings> = {
+export const DEFAULTS: Record<DoughKind, Settings> = {
   biga: { ...COMMON, bp: 75, bh: 45, temp: 18, hours: 16 },
   // The standard overnight poolish: 12–16 h at room temperature (about 21 °C).
   poolish: { ...COMMON, bw: 260, hyd: 68, salt: 2.8, fy: 0.15, bp: 30, bh: 100, temp: 21, hours: 14 },
   // A same-day dough: everything mixed at once, a bulk ferment at room temperature, then balls.
   direct: { ...COMMON, bw: 260, hyd: 65, salt: 2.8, fy: 0, bp: 75, bh: 45, temp: 21, hours: 6 },
-  // Your own ratios: flours, water, salt, yeast and whatever else, as % of the flour.
-  manual: { ...COMMON, hyd: 70, salt: 2.8, fy: 0, bp: 75, bh: 45, temp: 21, hours: 8, idy: 0.1 },
 };
 
-export const KIND_NAME: Record<Kind, string> = { biga: 'Biga', poolish: 'Poolish', direct: 'Direct', manual: 'Manual' };
+export const KIND_NAME: Record<Kind, string> = { biga: 'Biga', poolish: 'Poolish', direct: 'Direct', manual: 'Recipe' };
 
 export const LIMITS = {
   name: 60,
   flourName: 40,
   flours: 8,
-  extras: 8,
   notes: 20_000,
   recipesPerUser: 500,
   bakesPerUser: 2_000,
@@ -174,8 +169,8 @@ const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(mi
 const round = (v: number, dec: number) => Number(v.toFixed(dec));
 const share = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? round(clamp(v, 0, 100), 1) : null);
 
-/** Coerce anything into a valid Settings object for `kind`, filling gaps with defaults. */
-export function normalise(kind: Kind, raw: unknown): Settings {
+/** Coerce anything into a valid Settings object for a dough `kind`, filling gaps with defaults. */
+export function normalise(kind: DoughKind, raw: unknown): Settings {
   const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const out: Settings = structuredClone(DEFAULTS[kind]);
   for (const key of Object.keys(FIELDS) as NumKey[]) {
@@ -191,14 +186,6 @@ export function normalise(kind: Kind, raw: unknown): Settings {
   if (WATER_RULES.includes(src.waterRule as WaterRule)) out.waterRule = src.waterRule as WaterRule;
   if (typeof src.fridge === 'boolean') out.fridge = src.fridge;
   if (typeof src.split === 'boolean') out.split = src.split;
-  if (Array.isArray(src.extras))
-    out.extras = src.extras
-      .slice(0, LIMITS.extras)
-      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
-      .map((x) => ({
-        name: typeof x.name === 'string' ? x.name.slice(0, LIMITS.flourName) : 'Ingredient',
-        pct: typeof x.pct === 'number' && Number.isFinite(x.pct) ? round(clamp(x.pct, 0, 100), 3) : 0,
-      }));
   if (typeof src.plan === 'string' && START_RE.test(src.plan)) out.plan = src.plan;
   if (Array.isArray(src.flours)) {
     const flours = src.flours
@@ -215,21 +202,31 @@ export function normalise(kind: Kind, raw: unknown): Settings {
   return out;
 }
 
-export type Recipe = {
+/** The settings a kind of recipe stores: a dough's `Settings`, or a general recipe's `Formula`. */
+export type SettingsFor<K extends Kind> = K extends 'manual' ? Formula : Settings;
+
+/** Coerce anything into valid settings for `kind`. */
+export function normaliseFor<K extends Kind>(kind: K, raw: unknown): SettingsFor<K> {
+  return (kind === 'manual' ? normaliseFormula(raw) : normalise(kind as DoughKind, raw)) as SettingsFor<K>;
+}
+
+type RecipeBase = {
   id: string;
-  kind: Kind;
   name: string;
-  settings: Settings;
-  /** The method, as Markdown. */
+  /** The notes (a dough's method), as Markdown. */
   notes: string;
   createdAt: number;
   updatedAt: number;
 };
 
+export type DoughRecipe = RecipeBase & { kind: DoughKind; settings: Settings };
+export type GeneralRecipe = RecipeBase & { kind: 'manual'; settings: Formula };
+export type Recipe = DoughRecipe | GeneralRecipe;
+
 export type Bake = {
   id: string;
   recipeId: string;
-  kind: Kind;
+  kind: DoughKind;
   /** '' shows the date the preferment was mixed. */
   name: string;
   /** This bake's own copy of the recipe's settings. */
@@ -244,7 +241,7 @@ export type Bake = {
 
 /** The playground for one preferment: settings only, saved as you go. */
 export type Play = { settings: Settings; updatedAt: number };
-export type Playground = Record<Kind, Play | null>;
+export type Playground = Record<DoughKind, Play | null>;
 
 export const ID_RE = /^[A-Za-z0-9_-]{8,40}$/;
 

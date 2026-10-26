@@ -1,7 +1,7 @@
 import { MutationCache, QueryCache, QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { persistQueryClientRestore, persistQueryClientSubscribe } from '@tanstack/react-query-persist-client';
-import type { Bake, Kind, Play, Playground, Recipe, Settings } from '../../shared/recipe';
+import type { Bake, DoughKind, Play, Playground, Recipe, Settings } from '../../shared/recipe';
 import type { Topping } from '../../shared/topping';
 import { api, ApiError, isAuthError } from './api';
 import { toast } from './toast';
@@ -27,7 +27,7 @@ const TOPPING_DELETE = ['topping', 'delete'] as const;
 const scope = { id: 'recipes' };
 
 type DeleteVars = { id: string };
-export type PlayVars = { kind: Kind; settings: Settings; updatedAt: number };
+export type PlayVars = { kind: DoughKind; settings: Settings; updatedAt: number };
 
 const retry = (count: number, err: unknown) => !(err instanceof ApiError && err.status < 500 && err.status !== 429) && count < 3;
 
@@ -170,7 +170,7 @@ listMutations<Topping>({
   body: (t) => ({ name: t.name, data: t.data, createdAt: t.createdAt, updatedAt: t.updatedAt }),
 });
 
-const EMPTY_PLAYGROUND: Playground = { biga: null, poolish: null, direct: null, manual: null };
+const EMPTY_PLAYGROUND: Playground = { biga: null, poolish: null, direct: null };
 
 queryClient.setMutationDefaults(PLAY_SAVE, {
   mutationFn: (v: PlayVars) =>

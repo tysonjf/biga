@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { normalise, type Kind, type Playground } from '../shared/recipe';
-import { err, isKind, readBody, safeJson, stamps, type AppEnv } from './common';
+import { normalise, type DoughKind, type Playground } from '../shared/recipe';
+import { err, isDoughKind, readBody, safeJson, stamps, type AppEnv } from './common';
 
-type Row = { kind: Kind; settings: string; updated_at: number };
+type Row = { kind: DoughKind; settings: string; updated_at: number };
 
 const toPlay = (r: Row) => ({ settings: normalise(r.kind, safeJson(r.settings)), updatedAt: r.updated_at });
 
@@ -12,15 +12,15 @@ playground.get('/', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT kind, settings, updated_at FROM playground WHERE user_id = ?1')
     .bind(c.get('userId'))
     .all<Row>();
-  const out: Playground = { biga: null, poolish: null, direct: null, manual: null };
-  for (const r of results) out[r.kind] = toPlay(r);
+  const out: Playground = { biga: null, poolish: null, direct: null };
+  for (const r of results) if (isDoughKind(r.kind)) out[r.kind] = toPlay(r);
   return c.json({ playground: out });
 });
 
 /** Saves the playground for one preferment. Last write wins by `updatedAt`. */
 playground.put('/:kind', async (c) => {
   const kind = c.req.param('kind');
-  if (!isKind(kind)) return c.json(err('Unknown recipe type.', 'BAD_KIND'), 400);
+  if (!isDoughKind(kind)) return c.json(err('Unknown recipe type.', 'BAD_KIND'), 400);
   const { body, error } = await readBody(c, 'playground');
   if (error) return error;
   const settings = JSON.stringify(normalise(kind, body.settings));
