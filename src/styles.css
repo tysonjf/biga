@@ -1224,3 +1224,8 @@ ol.steps .meta { color: var(--muted); font-size: 13.5px; font-variant-numeric: t
 ol.steps .meta.note-l { color: var(--ink-2); font-style: italic; }
 .segmented[data-locked] button { cursor: default; }
 .choice-list .group-label { margin: 6px 0 0; }
+.mrow button.mg { text-decoration: underline dotted var(--line-strong); text-underline-offset: 5px; text-decoration-thickness: 1.5px; }
+.mrow button.mg:active { color: var(--accent); }
+.mrow .mg-in { grid-area: g; justify-self: end; width: 128px; height: 44px; text-align: right; font: 700 22px var(--display); font-variant-numeric: tabular-nums; }
+.paste { min-height: 170px; font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.paste-preview { display: grid; gap: 6px; }

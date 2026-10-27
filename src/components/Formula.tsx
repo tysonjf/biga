@@ -92,6 +92,16 @@ export function FormulaCard({ d, onFull, order }: { d: FormulaD; onFull: () => v
       return { ...p, ingredients: p.ingredients.map((x, j) => (idx.includes(j) ? { ...x, qty: col[idx.indexOf(j)] } : x)) };
     });
   const setQty = (r: Row, v: number) => (bakers && r.role === 'flour' && flours > 1 ? setFlourShare(r.i, v) : upd(r.i, { qty: v }));
+  // Working backwards in baker's percentages: type the grams you want and the % follows. For a flour,
+  // the whole dough is resized (through the weight per portion) so that flour comes to those grams.
+  const setGrams = (r: Row, g: number) => {
+    if (!(c.flour > 0) || !(g >= 0)) return;
+    if (r.role !== 'flour') return upd(r.i, { qty: +((g / c.flour) * 100).toFixed(3) });
+    const share = r.grams / c.flour;
+    if (!(share > 0)) return;
+    const total = (g / share) * (c.total / c.flour);
+    set('bw', Math.min(F_FIELDS.bw.max, Math.max(F_FIELDS.bw.min, +(total / (f.balls * (1 + f.waste / 100))).toFixed(2))));
+  };
   const remove = (i: number) =>
     setF((p) => {
       const rest = p.ingredients.filter((_, j) => j !== i);
@@ -214,7 +224,7 @@ export function FormulaCard({ d, onFull, order }: { d: FormulaD; onFull: () => v
                   </button>
                 </>
               )}
-              {st.rows.length ? <span className="fsum">{g0(st.total)}</span> : null}
+              {st.rows.length ? <span className="fsum">{stageLine(st.rows, st.total, st.index === 0)}</span> : null}
             </div>
           ) : null}
           <ul className="mlist">
@@ -227,6 +237,7 @@ export function FormulaCard({ d, onFull, order }: { d: FormulaD; onFull: () => v
                 focus={focusNew.current && r.i === f.ingredients.length - 1}
                 onName={(v) => upd(r.i, { name: v })}
                 onQty={(v) => setQty(r, v)}
+                onGrams={bakers ? (g) => setGrams(r, g) : undefined}
                 onOptions={() => setOpt(r.i)}
                 onRemove={() => remove(r.i)}
               />
@@ -282,6 +293,7 @@ function IngredientRow({
   focus,
   onName,
   onQty,
+  onGrams,
   onOptions,
   onRemove,
 }: {
@@ -291,6 +303,8 @@ function IngredientRow({
   focus: boolean;
   onName: (v: string) => void;
   onQty: (v: number) => void;
+  /** Baker's percentages: set the grams and let the % follow. */
+  onGrams?: (g: number) => void;
   onOptions: () => void;
   onRemove: () => void;
 }) {
@@ -324,7 +338,7 @@ function IngredientRow({
         autoFocus={focus && !locked}
         onChange={(e) => onName(e.target.value)}
       />
-      <span className="mg">{grams(r.grams)}</span>
+      {onGrams && !locked ? <GramsEdit grams={r.grams} label={label} onGrams={onGrams} /> : <span className="mg">{grams(r.grams)}</span>}
       <div className="mpct">
         {bakers && r.role === 'flour' && flours < 2 ? (
           <span className="mfixed">100%</span>
@@ -370,6 +384,49 @@ function IngredientRow({
       {sub ? <small className="msub">{sub}</small> : null}
     </li>
   );
+}
+
+/** The grams of an ingredient as a field: tap, type what you want, and the percentage is worked out. */
+function GramsEdit({ grams: g, label, onGrams }: { grams: number; label: string; onGrams: (g: number) => void }) {
+  const [text, setText] = useState<string | null>(null);
+  if (text === null)
+    return (
+      <button type="button" className="mg edit" aria-label={`${label}: ${grams(g)}. Tap to type the grams`} onClick={() => setText(String(+g.toFixed(g < 10 ? 2 : 0)))}>
+        {grams(g)}
+      </button>
+    );
+  const commit = () => {
+    const v = parseFloat(text.replace(',', '.'));
+    if (Number.isFinite(v)) onGrams(v);
+    setText(null);
+  };
+  return (
+    <input
+      className="tin mg-in"
+      type="text"
+      inputMode="decimal"
+      autoFocus
+      aria-label={`${label}, grams`}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onFocus={(e) => e.target.select()}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Escape') setText(null);
+      }}
+    />
+  );
+}
+
+/**
+ * A stage's total and, for a preferment or other part, its own hydration: "50% hydration · 1352 g".
+ * Not for the main mix, whose water usually counts against flour held in the other stages.
+ */
+function stageLine(rows: Row[], total: number, main: boolean): string {
+  const flour = rows.reduce((a, r) => a + (r.role === 'flour' ? r.grams : 0), 0);
+  const water = rows.reduce((a, r) => a + (r.role === 'water' ? r.grams : 0), 0);
+  return (!main && flour > 0 && water > 0 ? `${num((water / flour) * 100, 1)}% hydration · ` : '') + g0(total);
 }
 
 const ROLE_NAME: Record<Role, string> = { flour: 'Flour', water: 'Water', other: 'Other' };

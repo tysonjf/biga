@@ -198,7 +198,7 @@ export const realSteps = (steps: Step[]) => steps.filter((s) => s.text.trim() ||
 /** One line for the title and the home screen: "4 × 260 g · 65% hydration · 1061 g" or "× 1.5 · 15 servings · 1.6 kg". */
 export function formulaSummary(f: Formula, c: FormulaCalc): string {
   const hyd = c.hydration !== null ? ` · ${num(c.hydration, 1)}% hydration` : '';
-  if (f.method === 'bakers') return `${f.balls} × ${f.bw} g${hyd} · ${g0(c.total)}`;
+  if (f.method === 'bakers') return `${f.balls} × ${Math.round(f.bw)} g${hyd} · ${g0(c.total)}`;
   const n = Number.isInteger(c.portions) ? c.portions : +c.portions.toFixed(1);
   return `× ${num(c.mult, 2)} · ${n} ${n === 1 ? 'serving' : 'servings'}${hyd} · ${c.total >= 10_000 ? `${trim(c.total / 1000, 1)} kg` : g0(c.total)}`;
 }

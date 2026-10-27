@@ -15,10 +15,11 @@ import { BakeRow } from '../components/BakeRow';
 import { CalculatorCard } from '../components/Calculator';
 import { doughSummary, DoughCard, HowCard, JumpNav, RecipeCard, TempFold, TimingFold, useDough, usePlanStart, YeastCard } from '../components/Dough';
 import { CategoryChips, FormulaCard, FormulaTemp, MethodCard, useFormula } from '../components/Formula';
-import { Icon } from '../components/Icon';
+import { Icon, type IconName } from '../components/Icon';
 import { IngredientsView, type Stage } from '../components/IngredientsView';
 import { useLockButton } from '../components/LockButton';
 import { METHOD_TEMPLATE, NotesCard } from '../components/Notes';
+import { PasteSheet } from '../components/PasteRecipe';
 import { Page } from '../components/Page';
 import { Sheet } from '../components/Sheet';
 import { mobileOrder } from '../components/Fold';
@@ -107,11 +108,13 @@ type ShellProps<R extends Recipe> = {
   onBake?: () => void;
   /** Shown under the name while editing (a general recipe's category). */
   extra?: ReactNode;
+  /** More entries for the actions menu. */
+  actions?: { label: string; icon: IconName; run: () => void }[];
   children: (ctx: { openFull: () => void; locked: boolean }) => ReactNode;
 };
 
 /** The page around a recipe: its name and chip, the lock, the actions menu, the full-screen ingredients and deleting. */
-function RecipeShell<R extends Recipe>({ recipe, draft, chip, sub, stages, sections, onJump, bakes, onBake, extra, children }: ShellProps<R>) {
+function RecipeShell<R extends Recipe>({ recipe, draft, chip, sub, stages, sections, onJump, bakes, onBake, extra, actions, children }: ShellProps<R>) {
   const { name, setName, current, autosave } = draft;
   const [locked, setLocked] = useLock(recipe.id);
   const [menu, setMenu] = useState<null | 'menu' | 'delete'>(null);
@@ -241,6 +244,19 @@ function RecipeShell<R extends Recipe>({ recipe, draft, chip, sub, stages, secti
               >
                 <Icon name="expand" /> Ingredients full screen
               </button>
+              {actions?.map((a) => (
+                <button
+                  key={a.label}
+                  type="button"
+                  className="action"
+                  onClick={() => {
+                    setMenu(null);
+                    a.run();
+                  }}
+                >
+                  <Icon name={a.icon} /> {a.label}
+                </button>
+              ))}
               <button type="button" className="action" onClick={duplicate}>
                 <Icon name="copy" /> Duplicate
               </button>
@@ -336,9 +352,10 @@ function DoughEditor({ recipe }: { recipe: DoughRecipe }) {
 
 function GeneralEditor({ recipe }: { recipe: GeneralRecipe }) {
   const draft = useDraft(recipe);
-  const { s, setS } = draft;
+  const { s, setS, notes, setNotes } = draft;
   const d = useFormula(s, setS);
   const sub = formulaSummary(s, d.c);
+  const [paste, setPaste] = useState(false);
   return (
     <RecipeShell
       recipe={recipe}
@@ -349,6 +366,7 @@ function GeneralEditor({ recipe }: { recipe: GeneralRecipe }) {
       sections={GENERAL_SECTIONS}
       bakes={[]}
       extra={<CategoryChips d={d} />}
+      actions={[{ label: 'Paste ingredients…', icon: 'paste', run: () => setPaste(true) }]}
     >
       {({ openFull }) => (
         <div className="cols">
@@ -361,6 +379,19 @@ function GeneralEditor({ recipe }: { recipe: GeneralRecipe }) {
             {d.c.dough ? <FormulaTemp d={d} order={3} /> : null}
             <CalculatorCard vars={d.vars} scope={d.scope} order={5} />
           </div>
+          <PasteSheet
+            open={paste}
+            onClose={() => setPaste(false)}
+            title="Paste ingredients"
+            action="Replace the ingredients"
+            onDone={(p) => {
+              setPaste(false);
+              const before = s;
+              setS((prev) => ({ ...prev, method: p.method, ingredients: p.ingredients, stages: p.stages }));
+              if (p.notes.length) setNotes((notes.trim() ? `${notes.trimEnd()}\n\n` : '') + p.notes.join('\n\n'));
+              toast('Ingredients replaced', { label: 'Undo', run: () => setS(before) });
+            }}
+          />
         </div>
       )}
     </RecipeShell>

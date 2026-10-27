@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { CATEGORIES, CATEGORY_BLURB, CATEGORY_NAME, type Category } from '../../shared/formula';
+import { CATEGORIES, CATEGORY_BLURB, CATEGORY_NAME, defaultFormula, type Category } from '../../shared/formula';
 import { DOUGH_KINDS, KIND_NAME, KINDS, type DoughKind, type Kind, type Recipe, type Settings } from '../../shared/recipe';
 import { useCreateRecipe } from '../lib/actions';
 import { BAKE_GRACE_MIN, MODELS, nearest, parseStart, timeline } from '../lib/dough';
@@ -12,6 +12,7 @@ import { Page } from '../components/Page';
 import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
 import { DoughBall } from '../components/DoughBall';
+import { PasteSheet } from '../components/PasteRecipe';
 import { storedKind } from './PlaygroundPage';
 
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
@@ -49,6 +50,8 @@ export function HomePage() {
   const { data: play } = usePlayground();
   const [filter, setFilter] = useState<'all' | Kind>('all');
   const [picker, setPicker] = useState(false);
+  const [paste, setPaste] = useState(false);
+  const [pasteCat, setPasteCat] = useState<Category>('pizza');
   const create = useCreateRecipe();
   const search = useSearch({ from: '/' });
   const navigate = useNavigate();
@@ -193,6 +196,23 @@ export function HomePage() {
 
       <Sheet open={picker} onClose={() => setPicker(false)} title="New recipe">
         <div className="choice-list">
+          <button
+            type="button"
+            className="choice"
+            onClick={() => {
+              setPicker(false);
+              setPaste(true);
+            }}
+          >
+            <span className="kind-badge manual" aria-hidden="true">
+              <Icon name="paste" size={22} />
+            </span>
+            <span>
+              <b>Paste a recipe</b>
+              <small>From a post, a book or a message: the amounts and stages are read for you, ready to turn into baker’s percentages.</small>
+            </span>
+            <Icon name="chevron" size={18} />
+          </button>
           <div className="group-label">Pizza dough, to the hour</div>
           {DOUGH_KINDS.map((k) => (
             <button
@@ -237,6 +257,23 @@ export function HomePage() {
           ))}
         </div>
       </Sheet>
+
+      <PasteSheet
+        open={paste}
+        onClose={() => setPaste(false)}
+        title="Paste a recipe"
+        action="Create recipe"
+        category={pasteCat}
+        onCategory={setPasteCat}
+        onDone={(p) => {
+          setPaste(false);
+          create('manual', {
+            category: pasteCat,
+            settings: { ...defaultFormula(pasteCat), method: p.method, ingredients: p.ingredients, stages: p.stages },
+            notes: p.notes.length ? p.notes.join('\n\n') : '',
+          });
+        }}
+      />
     </Page>
   );
 }
