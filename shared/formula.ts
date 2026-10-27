@@ -56,6 +56,17 @@ export const ROLES: Role[] = ['flour', 'water', 'other'];
 /** Grams per whole egg, without the shell: a large egg is 50–55 g. */
 export const EGG_G = 50;
 
+// What a name says an ingredient is. The app follows the name unless you've set the role yourself.
+const FLOUR_RE = /\b(flour|farina|semola|semolina|wholemeal|whole[- ]?wheat|rye|spelt|einkorn|manitoba|tipo\s*0{1,2}|00|caputo|durum|khorasan|kamut|bread flour|strong)\b/i;
+const NOT_FLOUR_RE = /\b(corn|rice|potato|tapioca|chickpea|almond|coconut|arrowroot)\s*flour\b|\bflour\s*(tortilla|dust)/i;
+const WATER_RE = /^(ice[d]? |cold |warm |lukewarm |tepid |hot |filtered )?(water|acqua|eau|wasser|agua|h2o)\b/i;
+/** The role a name implies: "Tipo 00" is a flour, "Water" is water, anything else is other. */
+export function guessRole(name: string): Role {
+  if (WATER_RE.test(name.trim())) return 'water';
+  if (FLOUR_RE.test(name) && !NOT_FLOUR_RE.test(name)) return 'flour';
+  return 'other';
+}
+
 export type Ingredient = {
   name: string;
   role: Role;

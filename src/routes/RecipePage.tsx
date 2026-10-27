@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { CATEGORY_NAME } from '../../shared/formula';
 import { KIND_NAME, LIMITS, type Bake, type DoughRecipe, type GeneralRecipe, type Recipe } from '../../shared/recipe';
 import { useCreateRecipe, useStartBake } from '../lib/actions';
-import { formulaSummary } from '../lib/formula';
+import { formulaSummary, toDough } from '../lib/formula';
 import { Locked, useLock } from '../lib/lock';
 import type { Vars } from '../lib/math';
 import { useBakes, useDeleteRecipe, useRecipe, useSaveBake, useSaveRecipe } from '../lib/query';
@@ -356,6 +356,22 @@ function GeneralEditor({ recipe }: { recipe: GeneralRecipe }) {
   const d = useFormula(s, setS);
   const sub = formulaSummary(s, d.c);
   const [paste, setPaste] = useState(false);
+  const create = useCreateRecipe();
+  // The same dough as a biga, poolish or direct recipe, with the yeast chart and the schedule.
+  const dough = useMemo(() => toDough(s, d.c), [s, d.c]);
+  const makeDough = () => {
+    if (!dough) return;
+    draft.autosave.flush();
+    const left = dough.dropped.length ? `Left out of the ${KIND_NAME[dough.kind].toLowerCase()} recipe: ${dough.dropped.join(', ')}.` : '';
+    const extra = [left, ...dough.notes].filter(Boolean).join(' ');
+    create(dough.kind, { name: draft.name.trim() || recipe.name, settings: dough.settings, notes: [notes.trim(), extra].filter(Boolean).join('\n\n') });
+    if (extra) toast(extra);
+  };
+  const clear = () => {
+    const before = s;
+    setS((p) => ({ ...p, ingredients: [], stages: [] }));
+    toast('Ingredients cleared', { label: 'Undo', run: () => setS(before) });
+  };
   return (
     <RecipeShell
       recipe={recipe}
@@ -366,7 +382,11 @@ function GeneralEditor({ recipe }: { recipe: GeneralRecipe }) {
       sections={GENERAL_SECTIONS}
       bakes={[]}
       extra={<CategoryChips d={d} />}
-      actions={[{ label: 'Paste ingredients…', icon: 'paste', run: () => setPaste(true) }]}
+      actions={[
+        ...(dough ? [{ label: `Make a ${KIND_NAME[dough.kind].toLowerCase()} recipe with a schedule`, icon: 'flame' as const, run: makeDough }] : []),
+        { label: 'Paste ingredients…', icon: 'paste', run: () => setPaste(true) },
+        ...(s.ingredients.length ? [{ label: 'Clear the ingredients', icon: 'reset' as const, run: clear }] : []),
+      ]}
     >
       {({ openFull }) => (
         <div className="cols">

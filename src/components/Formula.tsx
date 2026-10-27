@@ -20,7 +20,9 @@ import {
   type Role,
   type Scale,
   type Unit,
+  guessRole,
 } from '../../shared/formula';
+import { parseIngredientLine } from '../lib/parseRecipe';
 import { balance, FIRST_HYD, fmtDur, g0, MIXERS, num, rebalance, WATER_MAX } from '../lib/dough';
 import { calcFormula, formulaStages, formulaVars, grams, realSteps, stepFor, stepMeta, switchMethod, type Row } from '../lib/formula';
 import { Locked, useLocked } from '../lib/lock';
@@ -110,9 +112,26 @@ export function FormulaCard({ d, onFull, order }: { d: FormulaD; onFull: () => v
       const col = balance(idx.map((j) => rest[j].qty));
       return { ...p, ingredients: rest.map((x, j) => (idx.includes(j) ? { ...x, qty: col[idx.indexOf(j)] } : x)) };
     });
-  const add = (stage: number) => {
-    focusNew.current = true;
-    setF((p) => ({ ...p, ingredients: [...p.ingredients, { name: '', role: 'other', qty: p.method === 'bakers' ? 1 : 10, unit: 'g', per: 1, optional: false, stage }] }));
+  // "900g flour" typed as one line is an ingredient; an empty line adds a blank row to fill in.
+  const add = (stage: number, text = '') => {
+    const typed = text.trim() ? parseIngredientLine(text, f.method, stage) : null;
+    focusNew.current = !typed;
+    setF((p) => {
+      const x: Ingredient = typed ?? { name: '', role: 'other', qty: p.method === 'bakers' ? 1 : 10, unit: 'g', per: 1, optional: false, stage };
+      let ingredients = [...p.ingredients, x];
+      // A new flour in baker's percentages takes its share from the others.
+      if (p.method === 'bakers' && x.role === 'flour') {
+        const idx = ingredients.map((y, j) => (y.role === 'flour' ? j : -1)).filter((j) => j >= 0);
+        const col = balance(idx.map((j) => ingredients[j].qty), idx.length - 1);
+        ingredients = ingredients.map((y, j) => (idx.includes(j) ? { ...y, qty: col[idx.indexOf(j)] } : y));
+      }
+      return { ...p, ingredients };
+    });
+  };
+  // The name says what an ingredient is, unless you've set its role yourself.
+  const rename = (r: Row, name: string) => {
+    const now = guessRole(name);
+    upd(r.i, { name, role: r.role === guessRole(r.name) && now !== r.role ? now : r.role });
   };
   const addStage = () => setF((p) => ({ ...p, stages: [...p.stages, ''] }));
   const renameStage = (i: number, name: string) => setF((p) => ({ ...p, stages: p.stages.map((s, j) => (j === i ? name : s)) }));
@@ -224,7 +243,7 @@ export function FormulaCard({ d, onFull, order }: { d: FormulaD; onFull: () => v
                   </button>
                 </>
               )}
-              {st.rows.length ? <span className="fsum">{stageLine(st.rows, st.total, st.index === 0)}</span> : null}
+              {st.rows.length ? <span className="fsum">{stageLine(st.rows, st.total, st.index === 0, bakers ? c.flour : 0)}</span> : null}
             </div>
           ) : null}
           <ul className="mlist">
@@ -235,7 +254,8 @@ export function FormulaCard({ d, onFull, order }: { d: FormulaD; onFull: () => v
                 f={f}
                 flours={flours}
                 focus={focusNew.current && r.i === f.ingredients.length - 1}
-                onName={(v) => upd(r.i, { name: v })}
+                stage={st.index > 0 ? { name: st.name || `stage ${st.index}`, flour: st.rows.reduce((a, x) => a + (x.role === 'flour' ? x.grams : 0), 0) } : undefined}
+                onName={(v) => rename(r, v)}
                 onQty={(v) => setQty(r, v)}
                 onGrams={bakers ? (g) => setGrams(r, g) : undefined}
                 onOptions={() => setOpt(r.i)}
@@ -244,16 +264,16 @@ export function FormulaCard({ d, onFull, order }: { d: FormulaD; onFull: () => v
             ))}
           </ul>
           {!locked && f.ingredients.length < F_LIMITS.ingredients ? (
-            <div className="btn-row">
-              <button type="button" className="btn small" onClick={() => add(st.index)}>
-                <Icon name="plus" size={16} /> Add ingredient
-              </button>
+            <>
+              <QuickAdd method={f.method} onAdd={(text) => add(st.index, text)} />
               {st.index === c.stages.length - 1 && f.stages.length < F_LIMITS.stages ? (
-                <button type="button" className="btn small" onClick={addStage}>
-                  <Icon name="plus" size={16} /> Add a stage
-                </button>
+                <div className="btn-row">
+                  <button type="button" className="btn small" onClick={addStage}>
+                    <Icon name="plus" size={16} /> Add a stage{f.stages.length ? '' : ' (a biga, a poolish, a levain…)'}
+                  </button>
+                </div>
               ) : null}
-            </div>
+            </>
           ) : null}
         </div>
       ))}
@@ -285,12 +305,45 @@ export function FormulaCard({ d, onFull, order }: { d: FormulaD; onFull: () => v
   );
 }
 
+/** Add an ingredient by typing it: "900g flour", "Salt 2.8%", or just a name. */
+function QuickAdd({ method, onAdd }: { method: Formula['method']; onAdd: (text: string) => void }) {
+  const [text, setText] = useState('');
+  const submit = () => {
+    onAdd(text);
+    setText('');
+  };
+  return (
+    <form
+      className="qadd"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <input
+        className="tin"
+        value={text}
+        placeholder={method === 'bakers' ? 'Add: salt 2.8%, or just a name' : 'Add: 900g flour, or just a name'}
+        aria-label="Add an ingredient"
+        autoComplete="off"
+        autoCapitalize="none"
+        enterKeyHint="done"
+        onChange={(e) => setText(e.target.value)}
+      />
+      <button type="submit" className="btn small">
+        <Icon name="plus" size={16} /> Add
+      </button>
+    </form>
+  );
+}
+
 /** One ingredient: its name and grams, under them its share or amount, and how it reads in its own unit. */
 function IngredientRow({
   r,
   f,
   flours,
   focus,
+  stage,
   onName,
   onQty,
   onGrams,
@@ -301,6 +354,8 @@ function IngredientRow({
   f: Formula;
   flours: number;
   focus: boolean;
+  /** The stage it's in, when not the main mix: water reads against that stage's flour too. */
+  stage?: { name: string; flour: number };
   onName: (v: string) => void;
   onQty: (v: number) => void;
   /** Baker's percentages: set the grams and let the % follow. */
@@ -315,8 +370,9 @@ function IngredientRow({
   const per = r.unit === 'g' ? 1 : r.unit === 'kg' ? 1000 : r.unit === 'l' ? r.per * 1000 : r.per;
   const unitLabel = r.unit === 'each' ? '' : r.unit;
   const sub = [
-    r.role === 'flour' ? (bakers && flours > 1 ? 'share of the flour' : 'flour') : r.role === 'water' ? 'water' : '',
+    r.role === 'flour' ? (bakers && flours > 1 ? 'share of all the flour' : 'flour') : r.role === 'water' ? 'water' : '',
     !bakers && r.pct !== null && r.role !== 'flour' ? `${pctText(r.pct)} of flour` : '',
+    stage && r.role !== 'flour' && stage.flour > 0 && r.grams > 0 ? `${pctText((r.grams / stage.flour) * 100)} of the ${stage.name} flour` : '',
     r.equiv ?? '',
     r.optional ? 'optional' : '',
   ]
@@ -420,13 +476,17 @@ function GramsEdit({ grams: g, label, onGrams }: { grams: number; label: string;
 }
 
 /**
- * A stage's total and, for a preferment or other part, its own hydration: "50% hydration · 1352 g".
- * Not for the main mix, whose water usually counts against flour held in the other stages.
+ * A stage's line, the way a biga is described: its share of all the flour, its own hydration, and its
+ * weight: "90% of the flour · 50% hydration · 1352 g". The main mix just gets its weight, since its
+ * water usually counts against flour held in the other stages.
  */
-function stageLine(rows: Row[], total: number, main: boolean): string {
+function stageLine(rows: Row[], total: number, main: boolean, allFlour: number): string {
   const flour = rows.reduce((a, r) => a + (r.role === 'flour' ? r.grams : 0), 0);
   const water = rows.reduce((a, r) => a + (r.role === 'water' ? r.grams : 0), 0);
-  return (!main && flour > 0 && water > 0 ? `${num((water / flour) * 100, 1)}% hydration · ` : '') + g0(total);
+  if (main) return g0(total);
+  return [allFlour > 0 && flour > 0 ? `${num((flour / allFlour) * 100, 1)}% of the flour` : '', flour > 0 && water > 0 ? `${num((water / flour) * 100, 1)}% hydration` : '', g0(total)]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 const ROLE_NAME: Record<Role, string> = { flour: 'Flour', water: 'Water', other: 'Other' };

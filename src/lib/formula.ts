@@ -11,6 +11,7 @@ import {
   type Step,
   type Unit,
 } from '../../shared/formula';
+import { DEFAULTS, LIMITS, normalise, type DoughKind, type Settings } from '../../shared/recipe';
 import type { Stage } from '../components/IngredientsView';
 import { FIRST_HYD, fmtDur, g0, g1, holdBack, num, waterTemp, type WaterTemp } from './dough';
 
@@ -281,3 +282,95 @@ export function stepFor(v: number, method: Method, role: Ingredient['role']): nu
 }
 
 export { FIRST_HYD };
+
+/* ---------- into a dough recipe with a schedule ---------- */
+
+const SALT = /\b(salt|sale|sel)\b/i;
+const OIL = /\b(oil|olio|huile|lard|strutto)\b/i;
+const SUGAR = /\b(sugar|zucchero|sucre|honey|miele|malt|malto|diastatic)\b/i;
+const YEAST = /\b(yeast|lievito|levure|idy|ady|cdy)\b/i;
+
+export type DoughFrom = {
+  kind: DoughKind;
+  settings: Settings;
+  /** Ingredients a dough recipe has no place for, left out: "Milk 114 g". */
+  dropped: string[];
+  /** What was adjusted to fit: the preferment's hydration, the yeast. */
+  notes: string[];
+};
+
+/**
+ * The same dough as a biga, poolish or direct recipe, so it gets the yeast chart, the water
+ * temperature and the schedule. The preferment is the one stage holding flour and water; its share of
+ * the flour and its hydration carry over, with the total hydration, salt, oil and sugar. Yeast is left
+ * to the chart. Null when it isn't that shape: no flour, or more than one preferment.
+ */
+export function toDough(f: Formula, c: FormulaCalc): DoughFrom | null {
+  if (!(c.flour > 0)) return null;
+  const pres = c.stages.filter((st) => st.index > 0 && st.rows.some((r) => r.role === 'flour' && r.grams > 0));
+  if (pres.length > 1) return null;
+  const pre = pres[0];
+  const preFlour = pre ? pre.rows.reduce((a, r) => a + (r.role === 'flour' ? r.grams : 0), 0) : 0;
+  const preWater = pre ? pre.rows.reduce((a, r) => a + (r.role === 'water' ? r.grams : 0), 0) : 0;
+  if (pre && !(preWater > 0)) return null;
+  const sum = (re: RegExp) => c.rows.reduce((a, r) => a + (r.role === 'other' && re.test(r.name) ? r.grams : 0), 0);
+  const dropped = c.rows.filter((r) => r.role === 'other' && r.grams > 0 && ![SALT, OIL, SUGAR, YEAST].some((re) => re.test(r.name))).map((r) => `${r.name || 'Ingredient'} ${g0(r.grams)}`);
+  const notes: string[] = [];
+  const yeast = sum(YEAST);
+  if (yeast > 0) notes.push(`The original's yeast (${grams(yeast)}) is replaced by the chart's.`);
+
+  // The flours: each by name, as its share of the preferment's flour and of the final dough's.
+  const byName = new Map<string, { pre: number; fin: number }>();
+  for (const r of c.rows) {
+    if (r.role !== 'flour') continue;
+    const key = r.name.trim() || 'Flour';
+    const cur = byName.get(key) ?? { pre: 0, fin: 0 };
+    if (pre && r.stage === pre.index) cur.pre += r.grams;
+    else cur.fin += r.grams;
+    byName.set(key, cur);
+  }
+  const finFlour = c.flour - preFlour;
+  const flourList = [...byName.entries()].map(([name, g]) => ({
+    name: name.slice(0, LIMITS.flourName),
+    pct: r1((preFlour > 0 ? g.pre / preFlour : (g.pre + g.fin) / c.flour) * 100),
+    fin: r1((finFlour > 0 ? g.fin / finFlour : (g.pre + g.fin) / c.flour) * 100),
+    all: r1(((g.pre + g.fin) / c.flour) * 100),
+  }));
+  const split = pre !== undefined && finFlour > 0 && flourList.some((x) => Math.abs(x.pct - x.fin) > 0.05);
+
+  let kind: DoughKind = 'direct';
+  let bh = 45;
+  if (pre) {
+    bh = (preWater / preFlour) * 100;
+    kind = bh >= 85 ? 'poolish' : 'biga';
+    if (kind === 'poolish' && Math.abs(bh - 100) > 0.5) notes.push(`A poolish is 100% hydration here; the original's ${num(bh, 0)}% is rounded to that.`);
+    if (kind === 'biga' && (bh < 40 || bh > 65)) notes.push(`A biga here is 40–65% hydration; the original's ${num(bh, 0)}% is clamped to that.`);
+  }
+  const balls = f.method === 'bakers' ? f.balls : Math.max(1, Math.round(c.portions));
+  const bw = f.method === 'bakers' ? f.bw : c.total / balls;
+  const settings = normalise(kind, {
+    ...DEFAULTS[kind],
+    balls,
+    bw: Math.round(bw),
+    waste: f.method === 'bakers' ? f.waste : 0,
+    hyd: (c.water / c.flour) * 100,
+    salt: (sum(SALT) / c.flour) * 100,
+    oil: (sum(OIL) / c.flour) * 100,
+    sugar: (sum(SUGAR) / c.flour) * 100,
+    bp: pre ? (preFlour / c.flour) * 100 : DEFAULTS[kind].bp,
+    bh,
+    ddt: f.ddt,
+    room: f.room,
+    flourT: f.flourT,
+    friction: f.friction,
+    split,
+    flours: flourList.map((x) => (split ? { name: x.name, pct: x.pct, fin: x.fin } : { name: x.name, pct: x.all, fin: x.all })),
+  });
+  if (pre && settings.bp !== r1((preFlour / c.flour) * 100) && Math.abs(settings.bp - (preFlour / c.flour) * 100) > 0.5)
+    notes.push(`The ${kind}'s share of the flour is kept between 10% and 100%: ${num(settings.bp, 0)}% instead of ${num((preFlour / c.flour) * 100, 0)}%.`);
+  if (settings.hyd !== +((c.water / c.flour) * 100).toFixed(2) && Math.abs(settings.hyd - (c.water / c.flour) * 100) > 0.05)
+    notes.push(`Hydration is kept between 50% and 90%: ${num(settings.hyd, 1)}%.`);
+  return { kind, settings, dropped, notes };
+}
+
+const r1 = (v: number) => Math.round(v * 10) / 10;

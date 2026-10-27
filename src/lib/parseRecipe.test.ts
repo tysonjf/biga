@@ -96,3 +96,24 @@ describe('pasting a recipe', () => {
     expect(parseRecipe(`200g corn flour\n300g rice flour`)!.ingredients.map((x) => x.role)).toEqual(['other', 'other']);
   });
 });
+
+describe('names and single lines', () => {
+  it('knows what a name is', async () => {
+    const { guessRole } = await import('../../shared/formula');
+    for (const n of ['Flour', 'Tipo 00', 'Caputo Pizzeria', 'Bread flour', 'Semola rimacinata', 'Wholemeal', 'farina 00']) expect(guessRole(n)).toBe('flour');
+    for (const n of ['Water', 'Iced water', 'acqua', 'water (cold)']) expect(guessRole(n)).toBe('water');
+    for (const n of ['Salt', 'IDY', 'Corn flour', 'Rice flour', 'Watermelon', 'Milk', '']) expect(guessRole(n)).toBe('other');
+  });
+
+  it('adds one typed line in either method', async () => {
+    const { parseIngredientLine } = await import('./parseRecipe');
+    expect(parseIngredientLine('900g flour', 'amounts', 1)).toMatchObject({ name: 'Flour', role: 'flour', qty: 900, unit: 'g', stage: 1 });
+    expect(parseIngredientLine('Water 450', 'amounts')).toMatchObject({ name: 'Water', role: 'water', qty: 450, unit: 'ml' });
+    expect(parseIngredientLine('2 eggs', 'amounts')).toMatchObject({ name: 'Eggs', qty: 100, unit: 'each', per: 50 });
+    expect(parseIngredientLine('Salt 2.8%', 'bakers')).toMatchObject({ name: 'Salt', qty: 2.8 });
+    expect(parseIngredientLine('salt 2.8', 'bakers')).toMatchObject({ name: 'Salt', qty: 2.8 });
+    expect(parseIngredientLine('0.2 IDY', 'bakers')).toMatchObject({ name: 'IDY', qty: 0.2 });
+    expect(parseIngredientLine('Semolina', 'bakers')).toMatchObject({ name: 'Semolina', role: 'flour', qty: 0 });
+    expect(parseIngredientLine('   ', 'bakers')).toBeNull();
+  });
+});

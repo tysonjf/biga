@@ -2,7 +2,7 @@
 // ingredients: "900g Flour", "Water 450 g", "2 large eggs", "Salt 2.5%", with headings such as
 // "Biga" or "Final dough" splitting it into stages. Roles (flour, water) and units come from the names.
 
-import { EGG_G, F_LIMITS, type Ingredient, type Method, type Role, type Unit } from '../../shared/formula';
+import { EGG_G, F_LIMITS, guessRole, type Ingredient, type Method, type Unit } from '../../shared/formula';
 
 export type Parsed = {
   method: Method;
@@ -53,9 +53,6 @@ const UNITS: Record<string, { grams: number; unit: Unit; per: number; rough?: bo
 };
 const UNIT_RE = Object.keys(UNITS).sort((a, b) => b.length - a.length).join('|');
 
-const FLOUR = /\b(flour|farina|semola|semolina|wholemeal|whole[- ]?wheat|rye|spelt|einkorn|manitoba|tipo\s*0{1,2}|\b00\b|caputo|durum|khorasan|kamut)\b/i;
-const NOT_FLOUR = /\b(corn|rice|potato|tapioca|chickpea|almond|coconut|arrowroot)\s*flour\b|\bflour\s*(tortilla|dust)/i;
-const WATER = /^(water|acqua|eau|wasser|agua|h2o|ice water|iced water|cold water|warm water|lukewarm water)\b/i;
 const EGG = /\begg|yolk|\bwhite(s)?\b.*egg|albumen/i;
 const PIECE_WORDS = /^(large|medium|small|whole|x|pcs?|pieces?|items?|each|cloves?|slices?)\b\.?\s*/i;
 
@@ -144,10 +141,34 @@ function parseLine(raw: string): Line | null {
   return { heading: text.replace(/^[#*\-•\s]+|[:\s*#]+$/g, '').trim() };
 }
 
-function roleOf(name: string): Role {
-  if (WATER.test(name)) return 'water';
-  if (FLOUR.test(name) && !NOT_FLOUR.test(name)) return 'flour';
-  return 'other';
+const roleOf = guessRole;
+
+/** One ingredient as a line: a quick way to add "900g flour", "Salt 2.8%" or just "Semolina". */
+export function toIngredient(l: { name: string; qty: Qty }, method: Method, stage: number): Ingredient {
+  const q = l.qty;
+  const egg = EGG.test(l.name);
+  return {
+    name: l.name,
+    role: roleOf(l.name),
+    qty: +(method === 'bakers' ? q.value : q.grams).toFixed(3),
+    unit: method === 'bakers' && q.unit === 'g' && egg ? 'each' : q.unit,
+    per: egg && (q.unit === 'each' || q.unit === 'g') ? (q.unit === 'each' ? q.per : /yolk/i.test(l.name) ? 18 : /white/i.test(l.name) ? 33 : EGG_G) : q.per,
+    optional: /optional/i.test(l.name),
+    stage,
+  };
+}
+
+/**
+ * The ingredient one typed line describes, for the quick-add field. In baker's percentages a bare
+ * number or a % is the percentage ("Salt 2.8"); otherwise the amount is in grams or its unit. A name
+ * on its own is an ingredient with no amount yet.
+ */
+export function parseIngredientLine(text: string, method: Method, stage = 0): Ingredient | null {
+  const l = parseLine(text);
+  if (!l) return null;
+  if ('heading' in l) return l.heading ? toIngredient({ name: tidy(l.heading), qty: { value: 0, grams: 0, unit: 'g', per: 1, pct: false, rough: false } }, method, stage) : null;
+  if (method === 'bakers' && !l.qty.pct && l.qty.unit !== 'g') return toIngredient({ ...l, qty: { ...l.qty, pct: true } }, method, stage);
+  return toIngredient(l, method, stage);
 }
 
 /** Parses pasted text into ingredients and stages. Null when there's nothing that looks like an ingredient. */
@@ -191,18 +212,8 @@ export function parseRecipe(text: string): Parsed | null {
   const ingredients: Ingredient[] = [];
   const push = (l: { name: string; qty: Qty }, stage: number) => {
     if (ingredients.length >= F_LIMITS.ingredients) return;
-    const role = roleOf(l.name);
-    const q = l.qty;
-    if (q.rough) warnings.push(`${l.name}: cups and spoons were read as water (${Math.round(q.grams)} g). Check the grams.`);
-    ingredients.push({
-      name: l.name,
-      role,
-      qty: +(method === 'bakers' ? q.value : q.grams).toFixed(3),
-      unit: method === 'bakers' && q.unit === 'g' && EGG.test(l.name) ? 'each' : q.unit,
-      per: EGG.test(l.name) && (q.unit === 'each' || q.unit === 'g') ? (q.unit === 'each' ? q.per : /yolk/i.test(l.name) ? 18 : /white/i.test(l.name) ? 33 : EGG_G) : q.per,
-      optional: /optional/i.test(l.name),
-      stage,
-    });
+    if (l.qty.rough) warnings.push(`${l.name}: cups and spoons were read as water (${Math.round(l.qty.grams)} g). Check the grams.`);
+    ingredients.push(toIngredient(l, method, stage));
   };
   for (const l of groups[main].items) push(l, 0);
   stageGroups.forEach((g, i) => g.items.forEach((l) => push(l, i + 1)));

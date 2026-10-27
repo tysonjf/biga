@@ -323,3 +323,49 @@ describe('storing a general recipe', () => {
     expect(normaliseFormula({ method: 'bakers', ingredients: [{ name: 'Sugar', qty: 5000 }] }).ingredients[0].qty).toBe(1000);
   });
 });
+
+describe('into a dough recipe', () => {
+  const reddit = (): Formula => ({
+    ...defaultFormula('pizza'),
+    method: 'amounts',
+    servings: 6,
+    stages: ['Biga'],
+    ingredients: [flour('Flour', 100), water(320), ing('Salt', 30), ing('Instant Yeast', 2), flour('Flour', 900, { stage: 1 }), ing('Instant Yeast', 2, { stage: 1 }), { ...water(450), stage: 1 }],
+  });
+
+  it('turns a biga recipe in grams into a biga recipe with a schedule: 90% share, 50% hydration, 77% overall', async () => {
+    const { toDough } = await import('./formula');
+    const f = reddit();
+    const r = toDough(f, calcFormula(f))!;
+    expect(r.kind).toBe('biga');
+    expect(r.settings).toMatchObject({ bp: 90, bh: 50, hyd: 77, salt: 3, oil: 0, sugar: 0, balls: 6, bw: 301, waste: 0, split: false });
+    expect(r.settings.flours).toEqual([{ name: 'Flour', pct: 100, fin: 100 }]);
+    expect(r.dropped).toEqual([]);
+    expect(r.notes[0]).toMatch(/yeast \(4.0 g\) is replaced/);
+  });
+
+  it('knows a poolish by its hydration, a direct dough by having no preferment, and keeps the flours per stage', async () => {
+    const { toDough } = await import('./formula');
+    const poolish = { ...reddit(), ingredients: [flour('Tipo 00', 700), water(250), ing('Salt', 25), flour('Manitoba', 300, { stage: 1 }), { ...water(300), stage: 1 }, ing('Oil', 20), ing('Milk', 50)] };
+    const p = toDough(poolish, calcFormula(poolish))!;
+    expect(p.kind).toBe('poolish');
+    expect(p.settings).toMatchObject({ bp: 30, bh: 100, hyd: 55, salt: 2.5, oil: 2, split: true });
+    expect(p.settings.flours).toEqual([
+      { name: 'Tipo 00', pct: 0, fin: 100 },
+      { name: 'Manitoba', pct: 100, fin: 0 },
+    ]);
+    expect(p.dropped).toEqual(['Milk 50 g']);
+    const direct = { ...reddit(), stages: [], ingredients: [flour('Flour', 1000), water(650), ing('Salt', 28), ing('Sugar', 10)] };
+    const dr = toDough(direct, calcFormula(direct))!;
+    expect(dr.kind).toBe('direct');
+    expect(dr.settings).toMatchObject({ hyd: 65, salt: 2.8, sugar: 1 });
+  });
+
+  it('gives up with no flour or two preferments', async () => {
+    const { toDough } = await import('./formula');
+    const none = { ...reddit(), ingredients: [water(300)] };
+    expect(toDough(none, calcFormula(none))).toBeNull();
+    const two = { ...reddit(), stages: ['Biga', 'Poolish'], ingredients: [flour('A', 500), water(300), flour('B', 300, { stage: 1 }), { ...water(150), stage: 1 }, flour('C', 200, { stage: 2 }), { ...water(200), stage: 2 }] };
+    expect(toDough(two, calcFormula(two))).toBeNull();
+  });
+});
