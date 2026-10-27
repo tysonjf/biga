@@ -12,6 +12,8 @@ import {
   clockChange,
   describeClockChange,
   directChart,
+  fermentOf,
+  applyGrams,
   doughVars,
   noPreferment,
   FIRST_HYD,
@@ -84,7 +86,7 @@ const idyPct = (fraction: number) => {
   return `${v.toFixed(v < 0.1 ? 3 : 2)}%`;
 };
 
-export const doughSummary = (s: Settings, c: Calc) => `${s.balls} × ${s.bw} g · ${num(s.hyd, 1)}% hydration · ${g0(c.dough)} dough`;
+export const doughSummary = (s: Settings, c: Calc) => `${s.balls} × ${Math.round(s.bw)} g · ${num(s.hyd, 1)}% hydration · ${g0(c.dough)} dough`;
 
 type StepperProps = Parameters<typeof Stepper>[0];
 
@@ -106,15 +108,20 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
   // A direct dough's chart follows its whole schedule: the balls, and any time in the fridge.
   const chart = useMemo(() => (direct ? { ...m, idy: directChart(s) } : m), [m, direct, s]);
   const onPick = useCallback((t: number, h: number) => setS((p) => ({ ...p, temp: t, hours: h })), [setS]);
-  const grid = (list: number[]) => ({
-    min: list[0],
-    max: list.at(-1)!,
-    parse: (v: number) => nearest(list, v),
-    bump: (v: number, dir: 1 | -1) => {
-      const i = list.indexOf(nearest(list, v));
-      return list[Math.max(0, Math.min(list.length - 1, i + dir))];
-    },
-  });
+  // From the chart the steppers walk its grid; with the yeast set by hand they go anywhere, fridge included.
+  const grid = (list: number[], k: 'temp' | 'hours') =>
+    c.manualYeast
+      ? { min: FIELDS[k].min, max: FIELDS[k].max, step: 1 }
+      : {
+          min: list[0],
+          max: list.at(-1)!,
+          parse: (v: number) => nearest(list, v),
+          bump: (v: number, dir: 1 | -1) => {
+            const i = list.indexOf(nearest(list, v));
+            return list[Math.max(0, Math.min(list.length - 1, i + dir))];
+          },
+        };
+  const { onChart } = fermentOf(kind, s);
   return (
     <Locked.Provider value={false}>
       <section className="card" id="yeast" aria-labelledby="h-yeast" style={mobileOrder(order)}>
@@ -131,7 +138,7 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
             unit="°C"
             value={c.temp}
             show={(v) => `${v}°`}
-            {...grid(m.temps)}
+            {...grid(m.temps, 'temp')}
             onChange={(v) => {
               set('temp', v);
               setReveal((r) => r + 1);
@@ -143,7 +150,7 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
             unit="hours"
             value={c.hours}
             show={(v) => `${v} h`}
-            {...grid(m.hours)}
+            {...grid(m.hours, 'hours')}
             onChange={(v) => {
               set('hours', v);
               setReveal((r) => r + 1);
@@ -154,7 +161,7 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
         <YeastMode d={d} locked={locked} />
         <div className="stats">
           {c.manualYeast ? (
-            <Stat k={`Chart suggests · ${idyPct(c.chartIdy)}`} v={g1((direct ? c.flour : c.pre.flour) * c.chartIdy)} />
+            <Stat k={`${onChart ? 'Chart suggests' : 'Beyond the chart, it suggests'} · ${idyPct(c.chartIdy)}`} v={g1((direct ? c.flour : c.pre.flour) * c.chartIdy)} />
           ) : (
             <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
           )}
@@ -215,8 +222,10 @@ function YeastMode({ d, locked }: { d: Dough; locked: boolean }) {
             </div>
           </div>
           <p className="note">
-            Your own yeast, as a recipe gives it. The chart still shows what it would use for {c.hours} h at {c.temp} °C, so you can see how far off the
-            recipe is: more yeast than the chart means it will be ready sooner than the schedule says.
+            Your own yeast, as a recipe gives it. The temperature and time can go anywhere from {FIELDS.temp.min} to {FIELDS.temp.max} °C and {FIELDS.hours.min} to{' '}
+            {FIELDS.hours.max} h, a fridge included{direct ? '' : `, and the schedule follows them`}. The chart still shows what it would use for {c.hours} h at {c.temp} °C
+            {fermentOf(kind, s).onChart ? '' : ' (beyond its grid, so a rough extrapolation)'}, so you can see how far off the recipe is: more yeast than the chart means it
+            will be ready sooner than the schedule says.
           </p>
         </>
       ) : null}
@@ -362,7 +371,10 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
 /* ---------- ingredients ---------- */
 
 export function RecipeCard({ d, onFull, order }: { d: Dough; onFull: () => void; order?: number }) {
-  const { c } = d;
+  const { kind, c, setS } = d;
+  const locked = useLocked();
+  // Working backwards: type a line's grams and the percentages, shares and ball weight follow.
+  const onGrams = (key: string, grams: number) => setS((p) => applyGrams(kind, p, calc(kind, p), key, grams));
   return (
     <section className="card" id="recipe" aria-labelledby="h-recipe" style={mobileOrder(order)}>
       <div className="card-h">
@@ -376,7 +388,13 @@ export function RecipeCard({ d, onFull, order }: { d: Dough; onFull: () => void;
         <Stat k="Flour" v={g0(c.flour)} plain />
         <Stat k="Water" v={g0(c.water)} plain />
       </div>
-      <RecipeLists stages={d.stages} />
+      <RecipeLists stages={d.stages} onGrams={locked ? undefined : onGrams} />
+      {locked ? null : (
+        <p className="note">
+          Working from a recipe in grams? Tap an amount and type it: the hydration, salt{noPreferment(kind) ? '' : `, ${c.model.name.toLowerCase()} share and hydration`} and ball
+          weight are worked back from the grams, for the {d.s.balls} balls set above.
+        </p>
+      )}
       {c.warnings.length ? <p className="warn">{c.warnings.join(' ')}</p> : null}
     </section>
   );
@@ -630,14 +648,14 @@ export function Stat({ k, v, accent, plain }: { k: string; v: string; accent?: b
   );
 }
 
-function Li({ n, sub, g, sum }: { n: string; sub?: string; g: string; sum?: boolean }) {
+function Li({ n, sub, g, sum, onGrams, grams }: { n: string; sub?: string; g: string; sum?: boolean; onGrams?: (g: number) => void; grams?: number }) {
   return (
     <li className={sum ? 'sum' : undefined}>
       <span className="n">
         {n}
         {sub ? <small>{sub}</small> : null}
       </span>
-      <span className="g">{g}</span>
+      {onGrams && grams !== undefined ? <GramsEdit grams={grams} label={n} fine={grams < 10} onGrams={onGrams} small /> : <span className="g">{g}</span>}
     </li>
   );
 }
@@ -665,7 +683,7 @@ function stages(kind: DoughKind, s: Settings, c: Calc, tl: Timeline | null): Sta
       if (grams < 0.5) return [];
       const pct = num((stage === 'pre' ? f.preShare : f.finShare) * 100, 1);
       const of = !c.split ? 'the flour' : stage === 'pre' ? `the ${pre} flour` : 'the final dough flour';
-      return [{ n: f.name || 'Flour', sub: c.flours.length > 1 ? `${pct}% of ${of}` : undefined, g: g0(grams) }];
+      return [{ n: f.name || 'Flour', sub: c.flours.length > 1 ? `${pct}% of ${of}` : undefined, g: g0(grams), edit: `${stage === 'pre' ? 'pf' : 'ff'}:${c.flours.indexOf(f)}`, grams }];
     });
   const waterLine = waterNote(c);
   const waterTag = waterNote(c, true);
@@ -687,11 +705,11 @@ function stages(kind: DoughKind, s: Settings, c: Calc, tl: Timeline | null): Sta
             },
           ]),
       ...(c.final.flour > 0.5 ? flourItems('fin') : []),
-      { n: 'Water', sub: waterLine, tag: waterTag, g: g0(Math.max(c.final.water, 0)) },
-      ...(c.final.oil > 0 ? [{ n: 'Olive oil', sub: `${num(s.oil, 1)}% of flour`, g: g0(c.final.oil) }] : []),
-      ...(c.final.sugar > 0 ? [{ n: 'Sugar', sub: `${num(s.sugar, 1)}% of flour`, g: c.final.sugar < 10 ? g1(c.final.sugar) : g0(c.final.sugar) }] : []),
-      { n: 'Salt', sub: `${num(s.salt, 1)}% of flour`, g: g0(c.final.salt) },
-      ...(c.final.yeast > 0
+      { n: 'Water', sub: waterLine, tag: waterTag, g: g0(Math.max(c.final.water, 0)), edit: 'fw', grams: Math.max(c.final.water, 0) },
+      ...(c.final.oil > 0 ? [{ n: 'Olive oil', sub: `${num(s.oil, 1)}% of flour`, g: g0(c.final.oil), edit: 'fo', grams: c.final.oil }] : []),
+      ...(c.final.sugar > 0 ? [{ n: 'Sugar', sub: `${num(s.sugar, 1)}% of flour`, g: c.final.sugar < 10 ? g1(c.final.sugar) : g0(c.final.sugar), edit: 'fsu', grams: c.final.sugar }] : []),
+      { n: 'Salt', sub: `${num(s.salt, 1)}% of flour`, g: g0(c.final.salt), edit: 'fs', grams: c.final.salt },
+      ...(c.final.yeast > 0 || c.manualYeast
         ? [
             {
               n: 'Instant dry yeast',
@@ -703,6 +721,8 @@ function stages(kind: DoughKind, s: Settings, c: Calc, tl: Timeline | null): Sta
                   ? `${num(c.finalIdy, 3)}% · cut for a ${s.room} °C room`
                   : `${num(s.fy, 2)}% of flour`,
               g: g1(c.final.yeast),
+              edit: 'fy',
+              grams: c.final.yeast,
             },
           ]
         : []),
@@ -722,8 +742,10 @@ function stages(kind: DoughKind, s: Settings, c: Calc, tl: Timeline | null): Sta
           sub: `${kind === 'poolish' ? 100 : num(s.bh, 0)}% of ${pre} flour` + (preWaterAt ? ` · ${preWaterAt}` : ''),
           tag: preWaterAt,
           g: g0(c.pre.water),
+          // A poolish is always 100% hydration: its water follows its flour.
+          ...(kind === 'biga' ? { edit: 'pw', grams: c.pre.water } : {}),
         },
-        { n: 'Instant dry yeast', short: 'Yeast', tag: 'IDY', sub: `${idyPct(c.preIdy)}${c.manualYeast ? ' · set by hand' : ''} · ${c.hours} h at ${c.temp} °C`, g: g1(c.pre.yeast) },
+        { n: 'Instant dry yeast', short: 'Yeast', tag: 'IDY', sub: `${idyPct(c.preIdy)}${c.manualYeast ? ' · set by hand' : ''} · ${c.hours} h at ${c.temp} °C`, g: g1(c.pre.yeast), edit: 'py', grams: c.pre.yeast },
         { n: `Total ${pre}`, g: g0(c.pre.total), sum: true },
       ],
     },
@@ -731,7 +753,7 @@ function stages(kind: DoughKind, s: Settings, c: Calc, tl: Timeline | null): Sta
   ];
 }
 
-function RecipeLists({ stages }: { stages: Stage[] }) {
+function RecipeLists({ stages, onGrams }: { stages: Stage[]; onGrams?: (key: string, grams: number) => void }) {
   return (
     <>
       {stages.map((st) => (
@@ -742,7 +764,7 @@ function RecipeLists({ stages }: { stages: Stage[] }) {
           </div>
           <ul className="ing">
             {st.items.map((it, i) => (
-              <Li key={i} n={it.n} sub={it.sub} g={it.g} sum={it.sum} />
+              <Li key={i} n={it.n} sub={it.sub} g={it.g} sum={it.sum} grams={it.grams} onGrams={onGrams && it.edit ? (g) => onGrams(it.edit!, g) : undefined} />
             ))}
           </ul>
         </div>

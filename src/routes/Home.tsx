@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { CATEGORIES, CATEGORY_BLURB, CATEGORY_NAME, defaultFormula, type Category } from '../../shared/formula';
 import { DOUGH_KINDS, KIND_NAME, KINDS, type DoughKind, type Kind, type Recipe, type Settings } from '../../shared/recipe';
 import { useCreateRecipe } from '../lib/actions';
-import { BAKE_GRACE_MIN, MODELS, nearest, parseStart, timeline } from '../lib/dough';
+import { BAKE_GRACE_MIN, fermentOf, parseStart, timeline } from '../lib/dough';
 import { calcFormula, formulaSummary } from '../lib/formula';
 import { useBakes, usePlayground, useRecipes } from '../lib/query';
 import { useNow } from '../lib/useNow';
@@ -33,8 +33,8 @@ const KIND_BLURB: Record<DoughKind, string> = {
 };
 
 function doughLine(kind: DoughKind, s: Settings) {
-  const m = MODELS[kind];
-  return `${s.balls} × ${s.bw} g · ${+s.hyd.toFixed(1)}% · ${nearest(m.hours, s.hours)} h @ ${nearest(m.temps, s.temp)}°`;
+  const { temp, hours } = fermentOf(kind, s);
+  return `${s.balls} × ${Math.round(s.bw)} g · ${+s.hyd.toFixed(1)}% · ${hours} h @ ${temp}°`;
 }
 
 function summary(r: Recipe) {

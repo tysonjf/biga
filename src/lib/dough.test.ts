@@ -665,3 +665,54 @@ describe('yeast set by hand', () => {
     expect(normalise('poolish', { yeast: 'whatever' }).yeast).toBe('chart');
   });
 });
+
+describe('a dough recipe from grams', () => {
+  it('works the biga recipe back from its grams: 90% share, 50% hydration, 77% overall, 3% salt, yeast by hand', async () => {
+    const { fromGrams, applyGrams, fermentOf } = await import('./dough');
+    const s = fromGrams('biga', biga({ balls: 6, waste: 0, yeast: 'manual' }), { pf: 900, pw: 450, py: 2, ff: 100, fw: 320, fs: 30, fo: 0, fsu: 0, fy: 2 });
+    expect(s).toMatchObject({ bp: 90, bh: 50, hyd: 77, salt: 3, oil: 0, sugar: 0, yeast: 'manual' });
+    expect(s.idy).toBeCloseTo(0.222, 3);
+    expect(s.fy).toBeCloseTo(0.2, 6);
+    expect(s.bw).toBeCloseTo(1804 / 6, 2);
+    const c = calc('biga', s);
+    expect(c.pre.flour).toBeCloseTo(900, 1);
+    expect(c.pre.water).toBeCloseTo(450, 1);
+    expect(c.pre.yeast).toBeCloseTo(2, 2);
+    expect(c.final.flour).toBeCloseTo(100, 1);
+    expect(c.final.water).toBeCloseTo(320, 1);
+    expect(c.final.salt).toBeCloseTo(30, 1);
+    expect(c.final.yeast).toBeCloseTo(2, 2);
+    // Line by line, the same: each typed amount holds the others' grams.
+    let t = biga({ balls: 6, waste: 0 });
+    for (const [key, g] of [['pf', 900], ['pw', 450], ['ff', 100], ['fw', 320], ['fs', 30], ['py', 2], ['fy', 2]] as const) t = applyGrams('biga', t, calc('biga', t), key, g);
+    expect(t.yeast).toBe('manual');
+    expect(t.bp).toBeCloseTo(90, 1);
+    expect(t.salt).toBeCloseTo(3, 1);
+    expect(t.bh).toBeCloseTo(50, 1);
+    expect(t.hyd).toBeCloseTo(77, 1);
+    expect(calc('biga', t).pre.yeast).toBeCloseTo(2, 1);
+    expect(fermentOf('biga', t).onChart).toBe(true);
+  });
+
+  it('typing a flour line with several flours resizes that stage, keeping the shares', async () => {
+    const { applyGrams } = await import('./dough');
+    const s = biga({ flours: [{ name: 'A', pct: 80, fin: 80 }, { name: 'B', pct: 20, fin: 20 }] });
+    const t = applyGrams('biga', s, calc('biga', s), 'pf:1', 100);
+    const c = calc('biga', t);
+    expect(c.flours[1].pre).toBeCloseTo(100, 1);
+    expect(c.flours[0].pre).toBeCloseTo(400, 1);
+    expect(t.yeast).toBe('chart');
+  });
+
+  it('lets the ferment go off the chart only with the yeast set by hand', async () => {
+    const { fermentOf } = await import('./dough');
+    expect(fermentOf('biga', biga({ temp: 4, hours: 24 }))).toEqual({ temp: 14, hours: 24, onChart: true });
+    expect(fermentOf('biga', biga({ temp: 4, hours: 24, yeast: 'manual' }))).toEqual({ temp: 4, hours: 24, onChart: false });
+    const c = calc('biga', biga({ temp: 4, hours: 24, yeast: 'manual', idy: 0.222 }));
+    expect(c.temp).toBe(4);
+    expect(c.hours).toBe(24);
+    expect(c.chartIdy).toBeGreaterThan(0.003); // colder and longer: the formula asks for more than at 18 °C / 16 h
+    const tl = timeline('biga', biga({ temp: 4, hours: 24, yeast: 'manual' }), new Date(2026, 0, 1, 8));
+    expect(tl.ready.getTime() - tl.steps[0].at.getTime()).toBe(24 * 3600_000);
+  });
+});

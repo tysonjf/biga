@@ -186,7 +186,8 @@ export function normalise(kind: DoughKind, raw: unknown): Settings {
     const v = src[key];
     if (typeof v === 'number' && Number.isFinite(v)) {
       const f = FIELDS[key];
-      out[key] = round(clamp(v, f.min, f.max), Math.max(f.dec, 2));
+      // Three decimals: enough that settings worked back from grams, line by line, don't drift.
+      out[key] = round(clamp(v, f.min, f.max), Math.max(f.dec, 3));
     }
   }
   if (kind === 'poolish') out.bh = 100;

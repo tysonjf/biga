@@ -5,11 +5,11 @@ import { g1 } from '../lib/dough';
 import { grams } from '../lib/formula';
 
 /** The grams of an ingredient as a field: tap, type what you want, and the percentage is worked out. */
-export function GramsEdit({ grams: g, label, fine, onGrams }: { grams: number; label: string; /** Show a decimal place (yeast). */ fine?: boolean; onGrams: (g: number) => void }) {
+export function GramsEdit({ grams: g, label, fine, small, onGrams }: { grams: number; label: string; /** Show a decimal place (yeast). */ fine?: boolean; /** In a list line, not a big figure. */ small?: boolean; onGrams: (g: number) => void }) {
   const [text, setText] = useState<string | null>(null);
   if (text === null)
     return (
-      <button type="button" className="mg edit" aria-label={`${label}: ${fine ? g1(g) : grams(g)}. Tap to type the grams`} onClick={() => setText(String(+g.toFixed(g < 10 || fine ? 2 : 0)))}>
+      <button type="button" className={'mg edit' + (small ? ' small' : '')} aria-label={`${label}: ${fine ? g1(g) : grams(g)}. Tap to type the grams`} onClick={() => setText(String(+g.toFixed(g < 10 || fine ? 2 : 0)))}>
         {fine ? g1(g) : grams(g)}
       </button>
     );
@@ -20,7 +20,7 @@ export function GramsEdit({ grams: g, label, fine, onGrams }: { grams: number; l
   };
   return (
     <input
-      className="tin mg-in"
+      className={'tin mg-in' + (small ? ' small' : '')}
       type="text"
       inputMode="decimal"
       autoFocus

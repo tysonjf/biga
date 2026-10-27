@@ -9,6 +9,10 @@ export type Ingredient = {
   tag?: string;
   g: string;
   sum?: boolean;
+  /** The grams can be typed in: which part of the dough this line is (see dough.ts applyGrams). */
+  edit?: string;
+  /** The grams as a number, for typing them in. */
+  grams?: number;
 };
 export type Stage = { key: string; title: string; when?: string; items: Ingredient[] };
 

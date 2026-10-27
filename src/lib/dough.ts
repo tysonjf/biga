@@ -1,4 +1,4 @@
-import { DEFAULTS, type DoughKind, type Settings, type WaterRule } from '../../shared/recipe';
+import { DEFAULTS, normalise, type DoughKind, type Settings, type WaterRule } from '../../shared/recipe';
 import { doughMultiplier, eqHours, freshForEqHours, IDY_PER_FRESH, rateAt, stretch, tauHours, type Segment } from './craig';
 
 /* ---------- preferment yeast models ---------- */
@@ -62,6 +62,20 @@ export const MODELS: Record<DoughKind, Model> = {
 
 export const nearest = (list: number[], v: number) =>
   list.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+
+/**
+ * The ferment's temperature and time. From the chart they snap to its grid; with the yeast set by
+ * hand they're whatever you set (2–32 °C, 1–96 h), a fridge biga included, and the chart is a guide.
+ */
+export function fermentOf(kind: DoughKind, s: Settings): { temp: number; hours: number; onChart: boolean } {
+  const m = MODELS[kind];
+  if (s.yeast === 'manual') {
+    const temp = Math.round(s.temp);
+    const hours = Math.round(s.hours);
+    return { temp, hours, onChart: m.temps.includes(temp) && m.hours.includes(hours) };
+  }
+  return { temp: nearest(m.temps, s.temp), hours: nearest(m.hours, s.hours), onChart: true };
+}
 
 /** A direct dough: one mix, no preferment. */
 export const noPreferment = (kind: DoughKind) => kind === 'direct';
@@ -346,8 +360,7 @@ export const rebalance = (pcts: number[], i: number, v: number) => balance(pcts.
 
 export function calc(kind: DoughKind, s: Settings): Calc {
   const m = MODELS[kind];
-  const temp = nearest(m.temps, s.temp);
-  const hours = nearest(m.hours, s.hours);
+  const { temp, hours } = fermentOf(kind, s);
   const hyd = s.hyd / 100;
   const salt = s.salt / 100;
   const oil = s.oil / 100;
@@ -466,6 +479,78 @@ export function holdBack(flour: number, preWater: number, water: number, hyd: nu
   return { first, rest: all - first };
 }
 
+/* ---------- from grams ---------- */
+
+/** The grams of a dough's parts: the preferment's flour, water and yeast, and the final mix's flour, water, salt, oil, sugar and yeast. */
+export type Grams = { pf: number; pw: number; py: number; ff: number; fw: number; fs: number; fo: number; fsu: number; fy: number };
+
+export const gramsOf = (c: Calc): Grams => ({
+  pf: c.pre.flour,
+  pw: c.pre.water,
+  py: c.pre.yeast,
+  ff: Math.max(c.final.flour, 0),
+  fw: Math.max(c.final.water, 0),
+  fs: c.final.salt,
+  fo: c.final.oil,
+  fsu: c.final.sugar,
+  fy: c.final.yeast,
+});
+
+/**
+ * Working backwards: the settings that give these grams, holding the number of balls. The hydration,
+ * salt, oil and sugar follow from the flour; the preferment's share and hydration from its flour and
+ * water; the ball weight from the whole. Yeast typed in is yeast set by hand.
+ */
+export function fromGrams(kind: DoughKind, s: Settings, g: Grams): Settings {
+  const direct = noPreferment(kind);
+  const pf = direct ? 0 : Math.max(0, g.pf);
+  const F = pf + Math.max(0, g.ff);
+  if (!(F > 0)) return s;
+  const pct = (v: number) => (Math.max(0, v) / F) * 100;
+  const dough = F + Math.max(0, g.pw) + Math.max(0, g.fw) + Math.max(0, g.fs) + Math.max(0, g.fo) + Math.max(0, g.fsu) + Math.max(0, g.py) + Math.max(0, g.fy);
+  const next: Settings = {
+    ...s,
+    hyd: pct(g.pw + g.fw),
+    salt: pct(g.fs),
+    oil: pct(g.fo),
+    sugar: pct(g.fsu),
+    bw: dough / (s.balls * (1 + s.waste / 100)),
+  };
+  if (!direct && pf > 0) {
+    next.bp = (pf / F) * 100;
+    if (kind === 'biga') next.bh = (Math.max(0, g.pw) / pf) * 100;
+  }
+  // The preferment's (a direct dough's) yeast only has a setting when it's set by hand.
+  if (s.yeast === 'manual') next.idy = direct ? pct(g.fy) : pf > 0 ? (Math.max(0, g.py) / pf) * 100 : s.idy;
+  if (!direct) next.fy = pct(g.fy) / roomFactor(s.room);
+  return normalise(kind, next);
+}
+
+/**
+ * One line of the Recipe card typed in grams. `key` is a part of `Grams`, or a flour line `pf:i` /
+ * `ff:i`, which sets that stage's flour so the i-th flour comes to those grams at its share.
+ */
+export function applyGrams(kind: DoughKind, s: Settings, c: Calc, key: string, grams: number): Settings {
+  if (!(grams >= 0)) return s;
+  const g = gramsOf(c);
+  const [part, idx] = key.split(':');
+  if (idx !== undefined) {
+    const f = c.flours[+idx];
+    const share = part === 'pf' ? f?.preShare : f?.finShare;
+    if (!f || !(share > 0)) return s;
+    g[part as 'pf' | 'ff'] = grams / share;
+  } else if (part in g) g[part as keyof Grams] = grams;
+  else return s;
+  // Typing a yeast line is choosing to set the yeast by hand; other lines leave the yeast as it was.
+  const touchedYeast = part === 'py' || (part === 'fy' && noPreferment(kind));
+  const next = fromGrams(kind, { ...s, yeast: touchedYeast ? 'manual' : s.yeast }, g);
+  if (!touchedYeast && s.yeast === 'chart') {
+    next.yeast = 'chart';
+    next.idy = s.idy;
+  }
+  return next;
+}
+
 export type DoughVar = { name: string; value: number; unit: string };
 
 /**
@@ -483,7 +568,7 @@ export function doughVars(kind: DoughKind, s: Settings, c: Calc): DoughVar[] {
     g('sugar', c.final.sugar),
     g('dough', c.dough),
     { name: 'balls', value: s.balls, unit: '' },
-    { name: 'hydration', value: s.hyd, unit: '%' },
+    { name: 'hydration', value: Math.round(s.hyd * 10) / 10, unit: '%' },
   ];
 }
 
@@ -520,13 +605,12 @@ export function afterReady(kind: DoughKind, s: Settings): number {
 
 export function timeline(kind: DoughKind, s: Settings, start: Date): Timeline {
   const m = MODELS[kind];
-  const H = nearest(m.hours, s.hours);
+  const { temp: T, hours: H } = fermentOf(kind, s);
   const b = (Math.max(0, s.buf) / 100) * H * 60;
   const ready = addMin(start, H * 60);
   const after = afterReady(kind, s);
   const bake = addMin(ready, after);
   const name = m.name.toLowerCase();
-  const T = nearest(m.temps, s.temp);
   const usable = b ? `usable from ${fmtClock(addMin(ready, -b))} to ${fmtClock(addMin(ready, b))}` : '';
   // A direct dough's chart is its bulk: it's balled when the chart's hours are up.
   const steps: Step[] =
