@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { FIELDS, LIMITS, PRE_T, type DoughKind, type NumKey, type Settings, type WaterRule } from '../../shared/recipe';
+import { GramsEdit } from './GramsEdit';
 import {
   afterReady,
   balance,
@@ -150,9 +151,14 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
           />
         </div>
         {direct ? <ColdFerment d={d} locked={locked} /> : null}
+        <YeastMode d={d} locked={locked} />
         <div className="stats">
-          <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
-          <Stat k={`${m.name} yeast`} v={g1(direct ? c.final.yeast : c.pre.yeast)} />
+          {c.manualYeast ? (
+            <Stat k={`Chart suggests · ${idyPct(c.chartIdy)}`} v={g1((direct ? c.flour : c.pre.flour) * c.chartIdy)} />
+          ) : (
+            <Stat k={s.boost ? `IDY · boost ${s.boost > 0 ? '+' : ''}${s.boost}%` : 'IDY'} v={idyPct(c.preIdy)} />
+          )}
+          <Stat k={c.manualYeast ? `${m.name} yeast · ${idyPct(c.preIdy)}` : `${m.name} yeast`} v={g1(direct ? c.final.yeast : c.pre.yeast)} />
           {live || !tl ? (
             <>
               <Stat k={direct ? 'Ball after' : `${m.name} ready after`} v={fmtDur(c.hours * 60)} />
@@ -166,6 +172,54 @@ export function YeastCard({ d, order, planner }: { d: Dough; order?: number; pla
           )}
         </div>
       </section>
+    </Locked.Provider>
+  );
+}
+
+/**
+ * Where the yeast comes from: the chart, or a figure of your own, in % of the preferment's flour (a
+ * direct dough's flour) or in grams, with the chart's figure shown beside it as a guide. Part of the
+ * recipe, so it locks.
+ */
+function YeastMode({ d, locked }: { d: Dough; locked: boolean }) {
+  const { kind, s, set, c } = d;
+  const direct = kind === 'direct';
+  const flour = direct ? c.flour : c.pre.flour;
+  const grams = direct ? c.final.yeast : c.pre.yeast;
+  const what = direct ? 'the dough' : `the ${c.model.name.toLowerCase()}`;
+  return (
+    <Locked.Provider value={locked}>
+      <div className="segmented" role="radiogroup" aria-label="Yeast" data-locked={locked ? '' : undefined}>
+        {(['chart', 'manual'] as const).map((mode) => (
+          <button key={mode} type="button" role="radio" aria-checked={s.yeast === mode} aria-disabled={locked || undefined} onClick={() => !locked && set('yeast', mode)}>
+            {mode === 'chart' ? 'From the chart' : 'Set by hand'}
+          </button>
+        ))}
+      </div>
+      {c.manualYeast ? (
+        <>
+          <div className="grid">
+            <Stepper {...FIELDS.idy} label={`IDY in ${what}`} unit={`% of ${direct ? 'flour' : 'its flour'}`} value={s.idy} onChange={(v) => set('idy', v)} />
+            <div className="stp">
+              <label>
+                <span>Or in grams</span>
+                <span className="u">g</span>
+              </label>
+              <div className="yman">
+                {locked || !(flour > 0) ? (
+                  <span className="mg">{g1(grams)}</span>
+                ) : (
+                  <GramsEdit grams={grams} label="Yeast" fine onGrams={(g) => set('idy', Math.min(FIELDS.idy.max, Math.max(0, +((g / flour) * 100).toFixed(3))))} />
+                )}
+              </div>
+            </div>
+          </div>
+          <p className="note">
+            Your own yeast, as a recipe gives it. The chart still shows what it would use for {c.hours} h at {c.temp} °C, so you can see how far off the
+            recipe is: more yeast than the chart means it will be ready sooner than the schedule says.
+          </p>
+        </>
+      ) : null}
     </Locked.Provider>
   );
 }
@@ -271,12 +325,14 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
         ))}
       </div>
       {kind === 'direct' ? (
-        <>
-          <div className="sub-h">Yeast</div>
-          <div className="grid">
-            <Field d={d} k="boost" />
-          </div>
-        </>
+        c.manualYeast ? null : (
+          <>
+            <div className="sub-h">Yeast</div>
+            <div className="grid">
+              <Field d={d} k="boost" />
+            </div>
+          </>
+        )
       ) : (
         <>
           <div className="sub-h">{c.model.name}</div>
@@ -293,7 +349,7 @@ export function DoughCard({ d, order }: { d: Dough; order?: number }) {
             <div className="fixed-val">100</div>
           </div>
         )}
-            <Field d={d} k="boost" />
+            {c.manualYeast ? null : <Field d={d} k="boost" />}
             <Field d={d} k="fy" />
           </div>
         </>
@@ -642,7 +698,7 @@ function stages(kind: DoughKind, s: Settings, c: Calc, tl: Timeline | null): Sta
               short: 'Yeast',
               tag: 'IDY',
               sub: direct
-                ? `${idyPct(c.preIdy)} · ${c.hours} h bulk at ${c.temp} °C`
+                ? `${idyPct(c.preIdy)}${c.manualYeast ? ' · set by hand' : ''} · ${c.hours} h bulk at ${c.temp} °C`
                 : c.finalIdy < s.fy
                   ? `${num(c.finalIdy, 3)}% · cut for a ${s.room} °C room`
                   : `${num(s.fy, 2)}% of flour`,
@@ -667,7 +723,7 @@ function stages(kind: DoughKind, s: Settings, c: Calc, tl: Timeline | null): Sta
           tag: preWaterAt,
           g: g0(c.pre.water),
         },
-        { n: 'Instant dry yeast', short: 'Yeast', tag: 'IDY', sub: `${idyPct(c.preIdy)} · ${c.hours} h at ${c.temp} °C`, g: g1(c.pre.yeast) },
+        { n: 'Instant dry yeast', short: 'Yeast', tag: 'IDY', sub: `${idyPct(c.preIdy)}${c.manualYeast ? ' · set by hand' : ''} · ${c.hours} h at ${c.temp} °C`, g: g1(c.pre.yeast) },
         { n: `Total ${pre}`, g: g0(c.pre.total), sum: true },
       ],
     },

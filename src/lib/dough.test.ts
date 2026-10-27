@@ -636,3 +636,32 @@ describe('normalise', () => {
     expect(normalise('poolish', { bh: 50 }).bh).toBe(100);
   });
 });
+
+describe('yeast set by hand', () => {
+  it('uses your figure instead of the chart, and keeps the chart as a guide', () => {
+    const s = biga({ yeast: 'manual', idy: 0.222 });
+    const c = calc('biga', s);
+    expect(c.manualYeast).toBe(true);
+    expect(c.preIdy).toBeCloseTo(0.00222, 9);
+    expect(c.pre.yeast).toBeCloseTo(c.pre.flour * 0.00222, 9);
+    expect(c.chartIdy).toBeCloseTo(0.003, 9); // 0.3% at 18 °C for 16 h, still there to compare
+    const sum = c.pre.total + c.final.flour + c.final.water + c.final.salt + c.final.oil + c.final.sugar + c.final.yeast;
+    expect(sum).toBeCloseTo(c.dough, 6);
+    // The boost only applies to the chart.
+    expect(calc('biga', biga({ yeast: 'manual', idy: 0.222, boost: 50 })).preIdy).toBeCloseTo(0.00222, 9);
+    expect(calc('biga', biga({ yeast: 'manual', idy: 0.222, boost: 50 })).chartIdy).toBeCloseTo(0.0045, 9);
+  });
+
+  it('sets a direct dough’s whole yeast', () => {
+    const c = calc('direct', direct({ yeast: 'manual', idy: 0.5 }));
+    expect(c.finalIdy).toBeCloseTo(0.5, 9);
+    expect(c.final.yeast).toBeCloseTo(c.flour * 0.005, 9);
+    expect(c.pre.yeast).toBe(0);
+  });
+
+  it('is stored, in range, and off by default', () => {
+    expect(DEFAULTS.biga.yeast).toBe('chart');
+    expect(normalise('biga', { yeast: 'manual', idy: 9 })).toMatchObject({ yeast: 'manual', idy: 5 });
+    expect(normalise('poolish', { yeast: 'whatever' }).yeast).toBe('chart');
+  });
+});

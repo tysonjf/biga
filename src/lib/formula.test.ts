@@ -341,7 +341,11 @@ describe('into a dough recipe', () => {
     expect(r.settings).toMatchObject({ bp: 90, bh: 50, hyd: 77, salt: 3, oil: 0, sugar: 0, balls: 6, bw: 301, waste: 0, split: false });
     expect(r.settings.flours).toEqual([{ name: 'Flour', pct: 100, fin: 100 }]);
     expect(r.dropped).toEqual([]);
-    expect(r.notes[0]).toMatch(/yeast \(4.0 g\) is replaced/);
+    // The original's yeast is kept, set by hand: 2 g in 900 g of biga flour, 2 g in 1000 g of flour.
+    expect(r.settings.yeast).toBe('manual');
+    expect(r.settings.idy).toBeCloseTo(0.222, 3);
+    expect(r.settings.fy).toBeCloseTo(0.2, 6);
+    expect(r.notes[0]).toMatch(/yeast is the original's \(4.0 g\), set by hand/);
   });
 
   it('knows a poolish by its hydration, a direct dough by having no preferment, and keeps the flours per stage', async () => {
@@ -358,7 +362,7 @@ describe('into a dough recipe', () => {
     const direct = { ...reddit(), stages: [], ingredients: [flour('Flour', 1000), water(650), ing('Salt', 28), ing('Sugar', 10)] };
     const dr = toDough(direct, calcFormula(direct))!;
     expect(dr.kind).toBe('direct');
-    expect(dr.settings).toMatchObject({ hyd: 65, salt: 2.8, sugar: 1 });
+    expect(dr.settings).toMatchObject({ hyd: 65, salt: 2.8, sugar: 1, yeast: 'chart' });
   });
 
   it('gives up with no flour or two preferments', async () => {

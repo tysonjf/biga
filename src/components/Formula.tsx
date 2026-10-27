@@ -30,6 +30,7 @@ import { toast } from '../lib/toast';
 import { useStoredFlag } from '../lib/useStoredFlag';
 import { Stat } from './Dough';
 import { Fold, mobileOrder } from './Fold';
+import { GramsEdit } from './GramsEdit';
 import { Icon } from './Icon';
 import { Sheet } from './Sheet';
 import { Stepper } from './Stepper';
@@ -439,39 +440,6 @@ function IngredientRow({
       )}
       {sub ? <small className="msub">{sub}</small> : null}
     </li>
-  );
-}
-
-/** The grams of an ingredient as a field: tap, type what you want, and the percentage is worked out. */
-function GramsEdit({ grams: g, label, onGrams }: { grams: number; label: string; onGrams: (g: number) => void }) {
-  const [text, setText] = useState<string | null>(null);
-  if (text === null)
-    return (
-      <button type="button" className="mg edit" aria-label={`${label}: ${grams(g)}. Tap to type the grams`} onClick={() => setText(String(+g.toFixed(g < 10 ? 2 : 0)))}>
-        {grams(g)}
-      </button>
-    );
-  const commit = () => {
-    const v = parseFloat(text.replace(',', '.'));
-    if (Number.isFinite(v)) onGrams(v);
-    setText(null);
-  };
-  return (
-    <input
-      className="tin mg-in"
-      type="text"
-      inputMode="decimal"
-      autoFocus
-      aria-label={`${label}, grams`}
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onFocus={(e) => e.target.select()}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        if (e.key === 'Escape') setText(null);
-      }}
-    />
   );
 }
 

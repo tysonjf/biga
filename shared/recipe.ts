@@ -26,6 +26,10 @@ export const isDoughKind = (v: unknown): v is DoughKind => DOUGH_KINDS.includes(
 export type WaterRule = 'balance' | 'ddt' | 'base';
 export const WATER_RULES: WaterRule[] = ['balance', 'ddt', 'base'];
 
+/** Where the preferment's yeast (a direct dough's yeast) comes from: the chart, or your own figure with the chart as a guide. */
+export type YeastMode = 'chart' | 'manual';
+export const YEAST_MODES: YeastMode[] = ['chart', 'manual'];
+
 export type Flour = {
   name: string;
   pct: number; // share of the total flour, %; with `split`, share of the preferment's flour
@@ -43,6 +47,8 @@ export type Settings = {
   bp: number; // preferment share, % of total flour (not used by a direct dough)
   bh: number; // preferment hydration, % of preferment flour (not used by a direct dough)
   boost: number; // ± % on the charted yeast
+  yeast: YeastMode; // the preferment's yeast (a direct dough's): from the chart, or `idy`
+  idy: number; // manual yeast, % of the preferment's flour (a direct dough's flour)
   fy: number; // final dough IDY, % of total flour, for a 18–24 °C proofing room (not used by a direct dough)
   temp: number; // preferment ferment temperature, °C; a direct dough's bulk ferment temperature
   hours: number; // preferment ferment time, h; a direct dough's bulk ferment time
@@ -91,6 +97,7 @@ export const FIELDS: Record<NumKey, Field> = {
   bh: { label: 'Hydration', unit: '%', step: 1, min: 40, max: 125, dec: 0 },
   boost: { label: 'Yeast boost', unit: '%', step: 5, min: -90, max: 300, dec: 0 },
   fy: { label: 'Final dough IDY', unit: '% flour', step: 0.05, min: 0, max: 1, dec: 2 },
+  idy: { label: 'IDY', unit: '% flour', step: 0.01, min: 0, max: 5, dec: 3 },
   temp: { label: 'Ferment temp', unit: '°C', step: 1, min: 2, max: 32, dec: 0 },
   hours: { label: 'Ferment time', unit: 'h', step: 1, min: 1, max: 96, dec: 0 },
   buf: { label: 'Ready window', unit: '± %', step: 5, min: 0, max: 50, dec: 0 },
@@ -120,6 +127,8 @@ const COMMON = {
   oil: 0,
   sugar: 0,
   boost: 0,
+  yeast: 'chart',
+  idy: 0.3,
   fy: 0.1,
   buf: 15,
   mix: 30,
@@ -184,6 +193,7 @@ export function normalise(kind: DoughKind, raw: unknown): Settings {
   else out.bh = clamp(out.bh, 40, 65);
   if (typeof src.preT === 'number' && Number.isFinite(src.preT)) out.preT = round(clamp(src.preT, PRE_T.min, PRE_T.max), PRE_T.dec);
   if (WATER_RULES.includes(src.waterRule as WaterRule)) out.waterRule = src.waterRule as WaterRule;
+  if (YEAST_MODES.includes(src.yeast as YeastMode)) out.yeast = src.yeast as YeastMode;
   if (typeof src.fridge === 'boolean') out.fridge = src.fridge;
   if (typeof src.split === 'boolean') out.split = src.split;
   if (typeof src.plan === 'string' && START_RE.test(src.plan)) out.plan = src.plan;

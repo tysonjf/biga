@@ -316,8 +316,12 @@ export function toDough(f: Formula, c: FormulaCalc): DoughFrom | null {
   const sum = (re: RegExp) => c.rows.reduce((a, r) => a + (r.role === 'other' && re.test(r.name) ? r.grams : 0), 0);
   const dropped = c.rows.filter((r) => r.role === 'other' && r.grams > 0 && ![SALT, OIL, SUGAR, YEAST].some((re) => re.test(r.name))).map((r) => `${r.name || 'Ingredient'} ${g0(r.grams)}`);
   const notes: string[] = [];
+  // The original's yeast is kept, set by hand: in the preferment as % of its flour, in the final dough
+  // as % of all the flour. The chart then shows beside it what it would have used.
+  const preYeast = pre ? pre.rows.reduce((a, r) => a + (r.role === 'other' && YEAST.test(r.name) ? r.grams : 0), 0) : 0;
   const yeast = sum(YEAST);
-  if (yeast > 0) notes.push(`The original's yeast (${grams(yeast)}) is replaced by the chart's.`);
+  const manual = yeast > 0;
+  if (manual) notes.push(`The yeast is the original's (${grams(yeast)}), set by hand; the chart shows its own suggestion beside it.`);
 
   // The flours: each by name, as its share of the preferment's flour and of the final dough's.
   const byName = new Map<string, { pre: number; fin: number }>();
@@ -359,6 +363,9 @@ export function toDough(f: Formula, c: FormulaCalc): DoughFrom | null {
     sugar: (sum(SUGAR) / c.flour) * 100,
     bp: pre ? (preFlour / c.flour) * 100 : DEFAULTS[kind].bp,
     bh,
+    yeast: manual ? 'manual' : 'chart',
+    idy: manual ? ((pre ? preYeast / preFlour : yeast / c.flour) * 100) : DEFAULTS[kind].idy,
+    fy: manual && pre ? ((yeast - preYeast) / c.flour) * 100 : DEFAULTS[kind].fy,
     ddt: f.ddt,
     room: f.room,
     flourT: f.flourT,

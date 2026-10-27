@@ -263,8 +263,12 @@ export type Calc = {
   model: Model;
   temp: number;
   hours: number;
-  /** Preferment IDY as a fraction of preferment flour, boost included. */
+  /** Preferment IDY as a fraction of preferment flour (a direct dough's flour): the chart's, or set by hand. */
   preIdy: number;
+  /** What the chart gives, boost included, as a fraction: the guide when the yeast is set by hand. */
+  chartIdy: number;
+  /** The yeast is set by hand (`s.idy`), with the chart as a guide. */
+  manualYeast: boolean;
   /** The preferment's temperature going into the final mix: as set, or its ferment temperature. */
   preTemp: number;
   /** Final IDY as % of total flour after the room adjustment. */
@@ -353,11 +357,13 @@ export function calc(kind: DoughKind, s: Settings): Calc {
   // The chart's yeast, % of the preferment's flour (a direct dough's flour).
   const charted = kind === 'direct' ? directIdy(s, temp, hours) : m.idy(temp, hours);
   const chartIdy = (charted * (1 + s.boost / 100)) / 100;
+  const manualYeast = s.yeast === 'manual';
+  const useIdy = manualYeast ? s.idy / 100 : chartIdy;
   const bp = direct ? 0 : Math.min(Math.max(s.bp, 0), 100) / 100;
   const bh = (kind === 'poolish' ? 100 : s.bh) / 100;
-  const finalIdy = direct ? chartIdy * 100 : s.fy * roomFactor(s.room);
+  const finalIdy = direct ? useIdy * 100 : s.fy * roomFactor(s.room);
   const fy = finalIdy / 100;
-  const preIdy = chartIdy;
+  const preIdy = useIdy;
 
   const dough = s.balls * s.bw * (1 + s.waste / 100);
   const FL = dough / (1 + hyd + salt + oil + sugar + fy + preIdy * bp);
@@ -432,6 +438,8 @@ export function calc(kind: DoughKind, s: Settings): Calc {
     temp,
     hours,
     preIdy,
+    chartIdy,
+    manualYeast,
     preTemp: s.preT ?? temp,
     finalIdy,
     dough,
